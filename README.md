@@ -1,14 +1,19 @@
 # BoostPrompt
 
-BoostPrompt é uma skill em português do Brasil para transformar uma necessidade de implementação, desenvolvimento ou pesquisa em um único Markdown acionável. Ela conduz uma entrevista guiada, consolida o contexto e produz um documento pronto para orientar a execução.
+BoostPrompt é uma skill em português do Brasil para transformar uma necessidade de implementação, desenvolvimento ou pesquisa em um único Markdown acionável. Ela permite escolher entre conduzir um discovery para gerar um prompt de desenvolvimento ou receber um roteiro de perguntas para alinhar o contexto com o cliente ou demandante.
 
 ## O que é
 
-Em vez de espalhar decisões entre vários arquivos, o BoostPrompt organiza o resultado em uma única entrega com escopo, decisões, tarefas, critérios de aceite, estratégia de validação e referências de pesquisa quando disponíveis.
+Em vez de espalhar decisões entre vários arquivos, o BoostPrompt organiza o resultado em uma única entrega. O usuário escolhe o `modo_saida` mais adequado:
 
-A skill mantém a entrevista de 30 a 50 perguntas. Nesta versão, a economia de contexto vem da consolidação da saída em um único documento, não da redução da quantidade de perguntas.
+- `prompt_desenvolvimento`: conduz uma entrevista de 30 a 50 perguntas e gera escopo, decisões, tarefas, critérios de aceite, estratégia de validação e prompt mestre para implementação.
+- `roteiro_perguntas_cliente`: gera um único Markdown com 30 a 50 perguntas contextualizadas que devem ser feitas ao cliente ou demandante antes do desenvolvimento.
+
+Nos dois modos, a saída fica consolidada em um único documento Markdown.
 
 ## O que você recebe ao final
+
+### `prompt_desenvolvimento`
 
 O Markdown final inclui:
 
@@ -20,6 +25,16 @@ O Markdown final inclui:
 - estratégia de testes, validações manuais, métricas ou avaliação de pesquisa;
 - referências consultadas, quando houver busca externa;
 - prompt mestre para implementação, baseado no próprio documento.
+
+### `roteiro_perguntas_cliente`
+
+O Markdown final inclui:
+
+- a demanda informada, sem premissas inventadas;
+- instruções breves para usar o roteiro;
+- de 30 a 50 perguntas adaptadas à demanda;
+- contexto, alternativas e trade-offs quando ajudarem a reduzir ambiguidades;
+- orientação clara sobre como o cliente ou demandante deve responder.
 
 ## Compatibilidade
 
@@ -95,13 +110,25 @@ Após a instalação, abra uma nova sessão do harness para garantir que a lista
 /boostprompt "Quero criar uma plataforma de IA para análise de contratos"
 ```
 
+Para obter o roteiro de perguntas para o cliente, informe o modo junto da demanda:
+
+```text
+/boostprompt "roteiro_perguntas_cliente: preciso criar uma plataforma de IA para análise de contratos"
+```
+
 ### Codex
 
 ```text
 $boostprompt Quero criar uma plataforma de IA para análise de contratos
 ```
 
-A skill também pode ser selecionada pelo menu de skills quando a necessidade descrita corresponder ao seu objetivo.
+Para obter o roteiro de perguntas para o cliente:
+
+```text
+$boostprompt roteiro_perguntas_cliente: preciso criar uma plataforma de IA para análise de contratos
+```
+
+A skill também pode ser selecionada pelo menu de skills quando a necessidade descrita corresponder ao seu objetivo. Caso o modo não seja informado no início, a skill pedirá a escolha entre `prompt_desenvolvimento` e `roteiro_perguntas_cliente`.
 
 ## Estrutura do repositório
 
@@ -144,7 +171,8 @@ Remova o MCP apenas se ele não for usado por outra configuração sua.
 
 ## Limitações e escopo
 
-- A entrevista atual continua entre 30 e 50 perguntas respondidas.
+- No modo `prompt_desenvolvimento`, a entrevista continua entre 30 e 50 perguntas respondidas.
+- No modo `roteiro_perguntas_cliente`, a saída contém entre 30 e 50 perguntas para o cliente ou demandante; não há entrevista interativa nesse modo.
 - A qualidade das recomendações externas depende do MCP de busca estar disponível.
 - O instalador não substitui uma configuração existente de `ddg-search`.
 - O projeto não publica pacote npm, PyPI ou marketplace nesta etapa.

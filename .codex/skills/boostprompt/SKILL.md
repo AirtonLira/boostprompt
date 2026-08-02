@@ -29,9 +29,28 @@ Você deve:
 4. Fazer perguntas com alternativas e trade-offs claros.
 5. Utilizar busca externa quando disponível para melhorar perguntas e recomendações.
 6. Consolidar todo o contexto coletado.
-7. Ao final, gerar um único documento Markdown com o escopo completo, as decisões, as tarefas e as validações da solução.
-8. Incluir no mesmo Markdown um **prompt mestre para implementação**, sem criar artefatos separados.
-9. Seguir o que esta definido no arquivo best-pratices-mk.md para complementar a geração do arquivo markedown final.
+7. Ao final, gerar um único documento Markdown de acordo com o `modo_saida` escolhido.
+8. No modo `prompt_desenvolvimento`, gerar o escopo completo, as decisões, as tarefas, as validações e o **prompt mestre para implementação**, sem criar artefatos separados.
+9. No modo `prompt_desenvolvimento`, seguir o que esta definido no arquivo best-pratices-mk.md para complementar a geração do arquivo markedown final.
+
+## Seleção do modo de saída
+
+Depois de receber a necessidade inicial, pergunte qual valor deve ser usado em `modo_saida`:
+
+1. **`prompt_desenvolvimento`** — para conduzir o discovery completo e gerar o Markdown atual com escopo e prompt mestre para desenvolver a demanda.
+2. **`roteiro_perguntas_cliente`** — para gerar um único documento Markdown com as perguntas que o usuário deve fazer ao cliente ou demandante antes de desenvolver a demanda.
+
+Se o usuário já deixar a escolha explícita junto da necessidade, registre-a sem repetir a pergunta. Se não escolher, recomende `prompt_desenvolvimento` e solicite a definição antes de continuar.
+
+### Modo `prompt_desenvolvimento`
+
+Mantenha integralmente o fluxo de entrevista, o documento final e o prompt mestre descritos nesta skill.
+
+### Modo `roteiro_perguntas_cliente`
+
+Não conduza a entrevista de discovery com o usuário. A partir da necessidade informada, entregue diretamente um único documento Markdown, sem preâmbulo nem artefatos separados, contendo de 30 a 50 perguntas contextualizadas que ele deve encaminhar ao cliente ou demandante.
+
+As perguntas devem cobrir adaptativamente os mesmos blocos de entrevista desta skill, priorizando as lacunas relevantes à demanda. Cada pergunta deve indicar por que ela importa, trazer de 2 a 4 alternativas quando isso ajudar o cliente a responder, explicitar os trade-offs relevantes e pedir uma resposta objetiva ou livre. Não gere escopo, plano de execução, critérios de aceite ou prompt mestre nesse modo.
 
 
 ## Idioma
@@ -42,8 +61,9 @@ Você deve:
 
 ## Regras obrigatórias
 
-- Não parar antes de 30 perguntas respondidas.
-- Parar obrigatoriamente ao atingir 50 perguntas.
+- No modo `prompt_desenvolvimento`, não parar antes de 30 perguntas respondidas.
+- No modo `prompt_desenvolvimento`, parar obrigatoriamente ao atingir 50 perguntas.
+- No modo `roteiro_perguntas_cliente`, gerar no mínimo 30 e no máximo 50 perguntas para o cliente ou demandante.
 - Cada pergunta deve ter:
   - contexto;
   - 2 a 4 alternativas;
@@ -180,7 +200,7 @@ Aprofunde conforme o projeto envolver:
 - CRM;
 - chatbot.
 
-## Formato obrigatório de cada pergunta
+## Formato obrigatório de cada pergunta no modo `prompt_desenvolvimento`
 
 Use sempre esta estrutura:
 
@@ -221,6 +241,7 @@ Peça ao usuário para escolher, combinar opções ou responder livremente.
 ## Controle interno
 
 Mantenha internamente:
+- modo_saida
 - perguntas_realizadas
 - blocos_cobertos
 - contexto_acumulado
@@ -235,6 +256,7 @@ Mantenha internamente:
 {
   "nome_projeto": "",
   "necessidade": "",
+  "modo_saida": "",
   "problema": "",
   "objetivo": "",
   "dominio": "",
@@ -259,6 +281,8 @@ Mantenha internamente:
 ```
 
 ## Documento final obrigatório
+
+Aplique esta estrutura somente no modo `prompt_desenvolvimento`.
 
 Ao finalizar, gere um documento Markdown em pt-BR com esta estrutura:
 
@@ -319,6 +343,38 @@ O prompt mestre final deve:
 - usar exclusivamente as decisões e restrições do mesmo Markdown;
 - não solicitar um novo discovery.
 
+## Documento final no modo `roteiro_perguntas_cliente`
+
+Gere exatamente um documento Markdown com a estrutura abaixo:
+
+# Perguntas para Discovery com o Cliente
+
+## Demanda informada
+Resuma a necessidade recebida, sem inventar fatos.
+
+## Como usar este roteiro
+Explique brevemente que as respostas devem ser consolidadas antes de iniciar o desenvolvimento.
+
+## Perguntas para o cliente ou demandante
+Inclua de 30 a 50 perguntas numeradas e adaptadas à demanda. Para cada uma, use:
+
+### Pergunta {N} — {Categoria}
+
+**Por que esta pergunta importa:**  
+...
+
+**Pergunta para o cliente:**  
+...
+
+**Alternativas para orientar a resposta:**  
+Inclua de 2 a 4 alternativas somente quando elas ajudarem a reduzir ambiguidade, com vantagens e desvantagens.
+
+**Trade-offs a esclarecer:**  
+...
+
+**Como responder:**  
+Peça uma decisão, uma prioridade ou uma resposta livre.
+
 ## Comportamento inicial
 
 Quando ativada ou quando perceber uma necessidade compatível, esta skill deve iniciar com:
@@ -327,4 +383,6 @@ Quando ativada ou quando perceber uma necessidade compatível, esta skill deve i
 
 Vou conduzir uma entrevista estruturada com no mínimo 30 e no máximo 50 perguntas. Em cada etapa, vou trazer alternativas, explicar trade-offs e recomendar a melhor direção com base no seu contexto e, quando disponível, em referências atuais obtidas por pesquisa.
 
-Para começar, descreva a necessidade, ideia ou problema que você quer transformar em solução."
+Para começar, escolha o resultado desejado: `prompt_desenvolvimento` para gerar um escopo completo e um prompt mestre, ou `roteiro_perguntas_cliente` para receber um único Markdown com perguntas a fazer ao cliente ou demandante.
+
+Em seguida, descreva a necessidade, ideia ou problema."

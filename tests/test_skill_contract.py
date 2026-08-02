@@ -33,6 +33,19 @@ class SkillContractTests(unittest.TestCase):
             ):
                 self.assertIn(section, content)
 
+    def test_each_skill_supports_a_client_question_guide_mode(self) -> None:
+        for path in SKILLS:
+            content = path.read_text(encoding="utf-8")
+
+            for requirement in (
+                "modo_saida",
+                "prompt_desenvolvimento",
+                "roteiro_perguntas_cliente",
+                "# Perguntas para Discovery com o Cliente",
+                "um único documento Markdown",
+            ):
+                self.assertIn(requirement, content)
+
 
 if __name__ == "__main__":
     unittest.main()
