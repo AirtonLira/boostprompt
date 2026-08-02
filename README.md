@@ -1,193 +1,187 @@
 # BoostPrompt
 
-BoostPrompt é uma skill em português do Brasil para transformar uma necessidade de implementação, desenvolvimento ou pesquisa em um único Markdown acionável. Ela permite escolher entre conduzir um discovery para gerar um prompt de desenvolvimento ou receber um roteiro de perguntas para alinhar o contexto com o cliente ou demandante.
+O BoostPrompt pode ser usado de duas formas independentes:
 
-## O que é
+1. **CLI/TUI local** — aplicação Textual com sessões persistidas no DuckDB, LangGraph, PydanticAI e geração de arquivo Markdown.
+2. **Skills para Claude Code e Codex** — discovery conduzido diretamente pelo seu harness, com a mesma estrutura de perguntas, modos de saída e política de pesquisa.
 
-Em vez de espalhar decisões entre vários arquivos, o BoostPrompt organiza o resultado em uma única entrega. O usuário escolhe o `modo_saida` mais adequado:
+Nos dois casos, há dois modos de saída:
 
-- `prompt_desenvolvimento`: conduz uma entrevista de 30 a 50 perguntas e gera escopo, decisões, tarefas, critérios de aceite, estratégia de validação e prompt mestre para implementação.
-- `roteiro_perguntas_cliente`: gera um único Markdown com 30 a 50 perguntas contextualizadas que devem ser feitas ao cliente ou demandante antes do desenvolvimento.
+- `prompt_desenvolvimento`: faz de 30 a 50 perguntas, uma por resposta, e gera um escopo completo com prompt mestre de implementação.
+- `roteiro_perguntas_cliente`: recebe a demanda e gera diretamente um único Markdown com 30 a 50 perguntas para enviar ao cliente ou demandante.
 
-Nos dois modos, a saída fica consolidada em um único documento Markdown.
+## Escolha rápida
 
-## O que você recebe ao final
-
-### `prompt_desenvolvimento`
-
-O Markdown final inclui:
-
-- contexto, objetivo, público, restrições e requisitos;
-- arquitetura, stack, dados, segurança e operação;
-- decisões consolidadas com justificativas e trade-offs;
-- plano de execução priorizado, com dependências, entregáveis e validação;
-- critérios de aceite e pendências que realmente bloqueiam a execução;
-- estratégia de testes, validações manuais, métricas ou avaliação de pesquisa;
-- referências consultadas, quando houver busca externa;
-- prompt mestre para implementação, baseado no próprio documento.
-
-### `roteiro_perguntas_cliente`
-
-O Markdown final inclui:
-
-- a demanda informada, sem premissas inventadas;
-- instruções breves para usar o roteiro;
-- de 30 a 50 perguntas adaptadas à demanda;
-- contexto, alternativas e trade-offs quando ajudarem a reduzir ambiguidades;
-- orientação clara sobre como o cliente ou demandante deve responder.
-
-## Compatibilidade
-
-| Harness | Instalação da skill | Planejamento | Execução |
-| --- | --- | --- | --- |
-| Claude Code | `~/.claude/skills/boostprompt` | Opus | Sonnet |
-| Codex | `~/.agents/skills/boostprompt` | GPT 5.6 Sol | GPT 5.6 Terra |
-
-As orientações de modelo são mantidas nas referências específicas de cada harness e são copiadas sem alteração pelo instalador.
-
-## Instalação rápida
-
-Pré-requisitos:
-
-- Python 3;
-- o CLI do harness escolhido (`claude` e/ou `codex`);
-- `uvx`, caso queira instalar também o MCP DuckDuckGo.
-
-Na raiz deste repositório, escolha o harness:
-
-```bash
-python3 install.py --harness claude
-python3 install.py --harness codex
-python3 install.py --harness both
-```
-
-Também há um atalho compatível com macOS e Linux:
-
-```bash
-./install.sh --harness codex --skip-mcp
-./install.sh --harness both --dry-run
-```
-
-O instalador copia somente a skill `boostprompt` do harness selecionado. Por padrão, ele também configura o MCP DuckDuckGo; use `--skip-mcp` para instalar apenas a skill.
-
-## Opções do instalador
-
-| Opção | Efeito |
+| Necessidade | Caminho recomendado |
 | --- | --- |
-| `--harness claude` | Instala somente a skill para Claude Code. |
-| `--harness codex` | Instala somente a skill para Codex. |
-| `--harness both` | Instala as duas variantes. |
-| `--skip-mcp` | Não configura o servidor de busca. |
-| `--dry-run` | Mostra cópias e comandos previstos sem escrever arquivos ou chamar CLIs. |
+| Quero sessões locais, retomada, resumo e arquivo `.md` persistido | CLI/TUI local |
+| Quero fazer o discovery dentro de uma conversa do Claude Code | Skill Claude Code |
+| Quero fazer o discovery dentro de uma conversa do Codex | Skill Codex |
 
-Se `uvx`, `claude` ou `codex` não estiverem disponíveis para a opção escolhida, o instalador encerra com uma mensagem de correção. Ele não baixa nem altera ferramentas do sistema automaticamente.
+---
 
-## MCP DuckDuckGo
+## 1. Uso pela CLI/TUI local
 
-O MCP é opcional: sem ele, o BoostPrompt continua funcionando em modo degradado, com boas práticas gerais. Com ele, a skill pode pesquisar alternativas atuais e fundamentar decisões técnicas.
+### Pré-requisitos
 
-O instalador usa [`uvx`](https://docs.astral.sh/uv/guides/tools/) para executar `duckduckgo-mcp-server` e chama o CLI nativo do harness. Antes, verifica se `ddg-search` já existe e nunca o substitui.
+- Python 3.11 ou superior;
+- [uv](https://docs.astral.sh/uv/);
+- uma chave da OpenAI no ambiente, pois o modelo padrão é `openai:gpt-4o-mini`.
 
-```bash
-# Claude Code
-claude mcp get ddg-search
-claude mcp add --scope user ddg-search -- uvx duckduckgo-mcp-server
+### Instalação e configuração
 
-# Codex
-codex mcp get ddg-search
-codex mcp add ddg-search -- uvx duckduckgo-mcp-server
-```
-
-Para instalar o MCP manualmente, execute apenas o comando `mcp add` correspondente. O arquivo [`.mcp.json`](.mcp.json) permanece como referência de configuração por projeto.
-
-## Como usar
-
-Após a instalação, abra uma nova sessão do harness para garantir que a lista de skills seja atualizada.
-
-### Claude Code
-
-```text
-/boostprompt "Quero criar uma plataforma de IA para análise de contratos"
-```
-
-Para obter o roteiro de perguntas para o cliente, informe o modo junto da demanda:
-
-```text
-/boostprompt "roteiro_perguntas_cliente: preciso criar uma plataforma de IA para análise de contratos"
-```
-
-### Codex
-
-```text
-$boostprompt Quero criar uma plataforma de IA para análise de contratos
-```
-
-Para obter o roteiro de perguntas para o cliente:
-
-```text
-$boostprompt roteiro_perguntas_cliente: preciso criar uma plataforma de IA para análise de contratos
-```
-
-A skill também pode ser selecionada pelo menu de skills quando a necessidade descrita corresponder ao seu objetivo. Caso o modo não seja informado no início, a skill pedirá a escolha entre `prompt_desenvolvimento` e `roteiro_perguntas_cliente`.
-
-## Estrutura do repositório
-
-```text
-BoostPrompt/
-├── .claude/skills/boostprompt/       # Skill e referência do Claude Code
-├── .codex/skills/boostprompt/        # Skill e referência do Codex
-├── .mcp.json                         # Exemplo de MCP DuckDuckGo por projeto
-├── install.py                        # Instalador Python multiharness
-├── install.sh                        # Atalho para o instalador Python
-├── tests/                            # Testes isolados do instalador e das skills
-├── README.md
-└── LICENSE
-```
-
-## Verificação e desinstalação
-
-Confira a configuração MCP:
+Na raiz do repositório:
 
 ```bash
-claude mcp get ddg-search
-codex mcp get ddg-search
+uv sync --extra dev
+export OPENAI_API_KEY="sua-chave"
 ```
 
-Para remover a skill, exclua somente o diretório correspondente:
+> O valor deve estar no ambiente do processo que inicia a aplicação. O arquivo `.env.example` serve como referência, mas a CLI atual não carrega `.env` automaticamente.
+
+### Iniciar a aplicação
 
 ```bash
-rm -rf "$HOME/.claude/skills/boostprompt"
-rm -rf "$HOME/.agents/skills/boostprompt"
+uv run boostprompt
 ```
 
-Para remover o MCP que você instalou para este projeto:
+O menu permite criar uma sessão, listar sessões salvas ou retomar uma sessão pelo código `BP-AAAA-NNN`.
+
+### Fluxo de uma sessão
+
+1. Escolha **Nova sessão**.
+2. Informe um nome identificável.
+3. Escolha o modo de saída.
+4. Descreva a demanda inicial.
+5. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação faz entre 30 e 50 perguntas, adaptadas às respostas anteriores.
+6. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o arquivo.
+
+Cada interação é persistida automaticamente. Não há botão de salvar.
+
+### Persistência, resumo e retomada
+
+O banco padrão é `data/boostprompt.db`. Ele armazena:
+
+- metadados da sessão e contador de perguntas;
+- respostas do usuário e perguntas/respostas dos agentes;
+- snapshots de contexto e decisões;
+- referências de pesquisa;
+- resumo estruturado do histórico antigo;
+- Markdown final gerado.
+
+Ao retomar uma sessão, a aplicação carrega as mensagens recentes e um resumo com objetivo, fatos confirmados, decisões, restrições, riscos e pendências. O Markdown final também fica disponível novamente para abrir ou salvar.
+
+O arquivo exportado fica em:
+
+```text
+output/<nome_da_sessão>_escopo.md
+```
+
+### Pesquisa DuckDuckGo por MCP
+
+Para pesquisas técnicas, a CLI inicia sob demanda o MCP DuckDuckGo por meio de:
 
 ```bash
-claude mcp remove --scope user ddg-search
-codex mcp remove ddg-search
+uvx duckduckgo-mcp-server
 ```
 
-Remova o MCP apenas se ele não for usado por outra configuração sua.
+Não é necessário registrar esse MCP manualmente para usar a TUI; é necessário apenas que `uvx` esteja disponível no `PATH` e consiga obter o pacote. O cliente usa timeout e, se o servidor falhar, continua em modo degradado sem inventar fontes. Referências válidas, com URL, são persistidas e usadas na seção **Referências consultadas** do Markdown.
 
-## Limitações e escopo
+---
 
-- No modo `prompt_desenvolvimento`, a entrevista continua entre 30 e 50 perguntas respondidas.
-- No modo `roteiro_perguntas_cliente`, a saída contém entre 30 e 50 perguntas para o cliente ou demandante; não há entrevista interativa nesse modo.
-- A qualidade das recomendações externas depende do MCP de busca estar disponível.
-- O instalador não substitui uma configuração existente de `ddg-search`.
-- O projeto não publica pacote npm, PyPI ou marketplace nesta etapa.
+## 2. Uso somente pelas skills
 
-## Roadmap
+As skills mantêm a mesma regra de discovery e os mesmos modos da CLI, mas funcionam inteiramente na conversa do harness. Elas não usam o banco DuckDB da TUI nem recuperam sessões locais: o histórico é o da própria conversa do Claude Code ou Codex.
 
-- Tornar o número de perguntas adaptativo para reduzir ainda mais o custo de tokens.
-- Adicionar outros provedores de busca.
-- Oferecer perfis especializados por domínio.
-- Empacotar a distribuição para marketplaces quando houver um canal de publicação definido.
+### Instalação automática
 
-## Autor
+O instalador copia a skill correta e configura o MCP `ddg-search` para o harness escolhido:
 
-Criado por [Airton Lira Junior](https://www.linkedin.com/in/airton-de-souza-lira-junior-6b81a661/).
+```bash
+# Claude Code e Codex
+uv run python install.py --harness both
 
-## Licença
+# Somente Claude Code
+uv run python install.py --harness claude
 
-Distribuído sob a licença MIT. Consulte [LICENSE](LICENSE).
+# Somente Codex
+uv run python install.py --harness codex
+```
+
+O instalador exige que o executável do harness e o `uvx` estejam no `PATH`. Para instalar ou atualizar somente a skill, sem alterar a configuração MCP:
+
+```bash
+uv run python install.py --harness both --skip-mcp
+```
+
+Para conferir as ações sem modificar nada:
+
+```bash
+uv run python install.py --harness both --dry-run
+```
+
+### Onde cada skill é instalada
+
+| Harness | Origem no repositório | Destino no usuário |
+| --- | --- | --- |
+| Claude Code | `.claude/skills/boostprompt/` | `~/.claude/skills/boostprompt/` |
+| Codex | `.codex/skills/boostprompt/` | `~/.agents/skills/boostprompt/` |
+
+O instalador preserva um MCP `ddg-search` que já exista. Quando precisa criá-lo, ele registra `uvx duckduckgo-mcp-server` como servidor MCP do harness.
+
+### Usar no Claude Code
+
+Após instalar, abra o Claude Code no projeto ou em qualquer diretório e peça explicitamente, por exemplo:
+
+```text
+Use a skill boostprompt no modo prompt_desenvolvimento.
+Quero definir o escopo de um portal de fornecedores.
+```
+
+Para o fluxo inverso:
+
+```text
+Use a skill boostprompt no modo roteiro_perguntas_cliente.
+Preciso de perguntas para entender uma integração de pagamentos.
+```
+
+O Claude Code usa o modelo e as credenciais já configurados no próprio harness. Não é necessário definir `OPENAI_API_KEY` para a skill, a menos que a sua configuração do Claude Code explicitamente dependa dela.
+
+### Usar no Codex
+
+Após instalar, inicie uma conversa no Codex e solicite a skill com a demanda e o modo:
+
+```text
+Use a skill boostprompt no modo prompt_desenvolvimento.
+Quero planejar uma plataforma de análise de dados.
+```
+
+Ou, para receber somente o roteiro:
+
+```text
+Use a skill boostprompt no modo roteiro_perguntas_cliente.
+Gere perguntas para levantar o escopo de um aplicativo de campo.
+```
+
+O Codex também usa o modelo, autenticação e permissões configurados no próprio harness. Quando o MCP `ddg-search` estiver disponível, a skill o usa para decisões técnicas atuais; se não estiver, continua com recomendações em modo degradado.
+
+### Comportamento esperado das skills
+
+- A skill pede ou reconhece `modo_saida`.
+- Em `prompt_desenvolvimento`, não encerra antes de 30 respostas e encerra no máximo na pergunta 50.
+- Cada pergunta apresenta contexto, alternativas, trade-offs, recomendação e forma de resposta.
+- Em `roteiro_perguntas_cliente`, entrega diretamente um único Markdown com 30 a 50 perguntas, sem iniciar a entrevista interativa.
+- O documento de escopo inclui decisões, plano de execução, critérios de aceite, estratégia de validação, pendências, referências e prompt mestre.
+
+---
+
+## Desenvolvimento e validação
+
+```bash
+uv run --extra dev pytest -q
+uv run --extra dev pytest --cov=src/boostprompt --cov-report=term-missing -q
+uv run --extra dev ruff check src tests
+uv run --extra dev mypy src
+```
+
+Os testes evitam chamadas externas: agentes e MCP são substituídos por adaptadores controlados, preservando a validação funcional de TUI, DuckDB, resumo, LangGraph, pesquisa degradada e exportação Markdown.
