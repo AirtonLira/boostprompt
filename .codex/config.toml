@@ -1,0 +1,4 @@
+[mcp_servers.ddg-search]
+command = "uvx"
+args = ["duckduckgo-mcp-server"]
+startup_timeout_ms = 20000
