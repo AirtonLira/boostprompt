@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from .base import BaseAgent
 
@@ -137,7 +138,7 @@ class ArchitectureAgent(BaseAgent):
     name = "architecture"
     description = "Especialista em arquitetura e stack tecnológica"
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: Model | str = "openai:gpt-4o-mini"):
         self.agent = Agent(
             model,
             output_type=ArchitectureResponse,
@@ -199,6 +200,6 @@ class ArchitectureAgent(BaseAgent):
 # Factory
 # =============================================================================
 
-def create_architecture_agent(model: str = "openai:gpt-4o-mini") -> ArchitectureAgent:
+def create_architecture_agent(model: Model | str = "openai:gpt-4o-mini") -> ArchitectureAgent:
     """Cria uma instância do Architecture Agent."""
     return ArchitectureAgent(model=model)

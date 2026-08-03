@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from boostprompt.models.schemas import Message, Question
 
@@ -79,7 +80,7 @@ class DiscoveryAgent(BaseAgent):
     name = "discovery"
     description = "Conduz uma entrevista de 30 a 50 perguntas estruturadas"
 
-    def __init__(self, model: str = "openai:gpt-4o-mini") -> None:
+    def __init__(self, model: Model | str = "openai:gpt-4o-mini") -> None:
         self.agent = Agent(
             model,
             output_type=DiscoveryResponse,
@@ -167,7 +168,7 @@ Produza uma única `DiscoveryResponse` para a próxima pergunta ou, apenas se pu
 """
 
 
-def create_discovery_agent(model: str = "openai:gpt-4o-mini") -> DiscoveryAgent:
+def create_discovery_agent(model: Model | str = "openai:gpt-4o-mini") -> DiscoveryAgent:
     """Cria o agente de discovery configurado com o modelo solicitado."""
 
     return DiscoveryAgent(model=model)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from boostprompt.models.schemas import QuestionGuide
 
@@ -25,7 +26,7 @@ class QuestionGuideAgent:
 
     def __init__(
         self,
-        model: str = "openai:gpt-4o-mini",
+        model: Model | str = "openai:gpt-4o-mini",
         runner: GuideRunner | None = None,
     ) -> None:
         self._runner = runner

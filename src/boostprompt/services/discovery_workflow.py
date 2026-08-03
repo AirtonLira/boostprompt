@@ -7,6 +7,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
+from pydantic_ai.models import Model
+
 from boostprompt.agents.architecture import create_architecture_agent
 from boostprompt.agents.delivery import create_delivery_agent
 from boostprompt.agents.discovery import create_discovery_agent
@@ -15,6 +17,7 @@ from boostprompt.agents.security import create_security_agent
 from boostprompt.agents.summary import SummaryAgent
 from boostprompt.agents.synthesis import create_synthesis_agent
 from boostprompt.graph.workflow import TurnState, TurnWorkflow, WorkflowAgents
+from boostprompt.llm import OpenAICompatibleSettings
 from boostprompt.memory.duckdb_store import DuckDBStore, ResumedSession
 from boostprompt.models.schemas import (
     DiscoveryMode,
@@ -95,25 +98,27 @@ class DiscoveryWorkflowService:
     @classmethod
     def create_default(
         cls,
-        db_path: str | Path = "data/boostprompt.db",
-        model: str = "openai:gpt-4o-mini",
+        db_path: str | Path | None = None,
+        model: Model | str | None = None,
     ) -> DiscoveryWorkflowService:
+        settings = OpenAICompatibleSettings.from_environment()
+        resolved_model = model or settings.build_model()
         agents = WorkflowAgents(
-            discovery=create_discovery_agent(model),
-            architecture=create_architecture_agent(model),
-            security=create_security_agent(model),
-            delivery=create_delivery_agent(model),
-            synthesis=create_synthesis_agent(model),
-            question_guide=QuestionGuideAgent(model),
+            discovery=create_discovery_agent(resolved_model),
+            architecture=create_architecture_agent(resolved_model),
+            security=create_security_agent(resolved_model),
+            delivery=create_delivery_agent(resolved_model),
+            synthesis=create_synthesis_agent(resolved_model),
+            question_guide=QuestionGuideAgent(resolved_model),
         )
         workflow = TurnWorkflow(
             agents,
             research_provider=DuckDuckGoMCPResearchProvider(),
         )
         return cls.with_database(
-            db_path=db_path,
+            db_path=db_path or settings.database_path,
             workflow=workflow,
-            summary_agent=SummaryAgent(model),
+            summary_agent=SummaryAgent(resolved_model),
         )
 
     async def create_session(self, name: str, mode: DiscoveryMode) -> Session:

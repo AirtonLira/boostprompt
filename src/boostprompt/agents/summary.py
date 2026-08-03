@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from boostprompt.models.schemas import Message, SessionSummary
 
@@ -24,7 +25,7 @@ class SummaryAgent:
 
     def __init__(
         self,
-        model: str = "openai:gpt-4o-mini",
+        model: Model | str = "openai:gpt-4o-mini",
         runner: SummaryRunner | None = None,
     ) -> None:
         self._runner = runner

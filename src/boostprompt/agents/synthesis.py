@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from boostprompt.models.schemas import Message
 
@@ -140,7 +141,7 @@ class SynthesisAgent(BaseAgent):
     name = "synthesis"
     description = "Consolida o discovery no documento Markdown final"
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: Model | str = "openai:gpt-4o-mini"):
         self.agent = Agent(
             model,
             output_type=SynthesisResponse,
@@ -216,6 +217,6 @@ class SynthesisAgent(BaseAgent):
 # Factory
 # =============================================================================
 
-def create_synthesis_agent(model: str = "openai:gpt-4o-mini") -> SynthesisAgent:
+def create_synthesis_agent(model: Model | str = "openai:gpt-4o-mini") -> SynthesisAgent:
     """Cria uma instância do Synthesis Agent."""
     return SynthesisAgent(model=model)

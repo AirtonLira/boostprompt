@@ -26,7 +26,8 @@ Nos dois casos, há dois modos de saída:
 
 - Python 3.11 ou superior;
 - [uv](https://docs.astral.sh/uv/);
-- uma chave da OpenAI no ambiente, pois o modelo padrão é `openai:gpt-4o-mini`.
+- um endpoint compatível com a API OpenAI e sua credencial, como LiteLLM,
+  OpenRouter, vLLM ou a própria OpenAI.
 
 ### Instalação e configuração
 
@@ -34,10 +35,21 @@ Na raiz do repositório:
 
 ```bash
 uv sync --extra dev
-export OPENAI_API_KEY="sua-chave"
+cp .env.example .env
 ```
 
-> O valor deve estar no ambiente do processo que inicia a aplicação. O arquivo `.env.example` serve como referência, mas a CLI atual não carrega `.env` automaticamente.
+A CLI carrega `.env` automaticamente sem sobrescrever variáveis já exportadas no shell.
+Para usar LiteLLM, configure por exemplo:
+
+```dotenv
+LLM_MODEL=gpt-4o-mini
+LLM_BASE_URL=http://localhost:4000/v1
+LLM_API_KEY=sua-chave-litellm
+```
+
+Também são aceitos os nomes legados `LITELLM_BASE_URL` e `API_KEY`. Para apontar
+para outro arquivo, exporte `BOOSTPROMPT_ENV_FILE=/caminho/para/arquivo.env` antes
+de executar a CLI. `DUCKDB_PATH` é opcional e define o banco local.
 
 ### Iniciar a aplicação
 

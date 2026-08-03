@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from .base import BaseAgent
 
@@ -140,7 +141,7 @@ class SecurityAgent(BaseAgent):
     name = "security"
     description = "Especialista em segurança e compliance"
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: Model | str = "openai:gpt-4o-mini"):
         self.agent = Agent(
             model,
             output_type=SecurityResponse,
@@ -211,6 +212,6 @@ class SecurityAgent(BaseAgent):
 # Factory
 # =============================================================================
 
-def create_security_agent(model: str = "openai:gpt-4o-mini") -> SecurityAgent:
+def create_security_agent(model: Model | str = "openai:gpt-4o-mini") -> SecurityAgent:
     """Cria uma instância do Security Agent."""
     return SecurityAgent(model=model)

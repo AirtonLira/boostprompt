@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.models import Model
 
 from .base import BaseAgent
 
@@ -136,7 +137,7 @@ class DeliveryAgent(BaseAgent):
     name = "delivery"
     description = "Especialista em entrega e operação"
 
-    def __init__(self, model: str = "openai:gpt-4o-mini"):
+    def __init__(self, model: Model | str = "openai:gpt-4o-mini"):
         self.agent = Agent(
             model,
             output_type=DeliveryResponse,
@@ -193,6 +194,6 @@ class DeliveryAgent(BaseAgent):
 # Factory
 # =============================================================================
 
-def create_delivery_agent(model: str = "openai:gpt-4o-mini") -> DeliveryAgent:
+def create_delivery_agent(model: Model | str = "openai:gpt-4o-mini") -> DeliveryAgent:
     """Cria uma instância do Delivery Agent."""
     return DeliveryAgent(model=model)
