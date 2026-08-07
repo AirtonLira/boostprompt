@@ -153,6 +153,57 @@ class DuckDBStore:
             WHERE messages.id = ranked.id AND messages.sequence IS NULL
             """
         )
+        self._drop_legacy_session_foreign_keys()
+
+    def _drop_legacy_session_foreign_keys(self) -> None:
+        """Recria sem FK as tabelas de bancos antigos (criados pelo setup_project.sh).
+
+        DuckDB não suporta ALTER TABLE DROP CONSTRAINT e falha ao checar a FK
+        quando sessão e filhos são apagados na mesma transação (delete_session),
+        mesmo com os filhos já removidos antes do DELETE em sessions.
+        """
+
+        fk_tables = {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT DISTINCT table_name FROM duckdb_constraints() WHERE constraint_type = 'FOREIGN KEY'"
+            ).fetchall()
+        }
+        rebuilds: dict[str, list[str]] = {
+            "messages": [
+                "id TEXT PRIMARY KEY",
+                "session_id TEXT NOT NULL",
+                "sequence INTEGER",
+                "role TEXT NOT NULL",
+                "content TEXT NOT NULL",
+                "created_at TIMESTAMP NOT NULL",
+            ],
+            "context_snapshots": [
+                "id TEXT PRIMARY KEY",
+                "session_id TEXT NOT NULL",
+                "snapshot_data TEXT NOT NULL",
+                "questions_count INTEGER NOT NULL",
+                "created_at TIMESTAMP NOT NULL",
+            ],
+            "decisions": [
+                "id TEXT PRIMARY KEY",
+                "session_id TEXT NOT NULL",
+                "category TEXT NOT NULL",
+                "decision TEXT NOT NULL",
+                "alternatives TEXT NOT NULL",
+                "tradeoffs TEXT NOT NULL",
+                "created_at TIMESTAMP NOT NULL",
+            ],
+        }
+        for table, column_defs in rebuilds.items():
+            if table not in fk_tables:
+                continue
+            column_names = ", ".join(definition.split()[0] for definition in column_defs)
+            self.conn.execute(f"DROP TABLE IF EXISTS {table}_no_fk")
+            self.conn.execute(f"CREATE TABLE {table}_no_fk ({', '.join(column_defs)})")
+            self.conn.execute(f"INSERT INTO {table}_no_fk SELECT {column_names} FROM {table}")
+            self.conn.execute(f"DROP TABLE {table}")
+            self.conn.execute(f"ALTER TABLE {table}_no_fk RENAME TO {table}")
 
     @contextmanager
     def transaction(self) -> Iterator[None]:

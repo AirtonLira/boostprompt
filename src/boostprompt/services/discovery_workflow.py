@@ -158,6 +158,9 @@ class DiscoveryWorkflowService:
     def list_sessions(self) -> list[dict[str, Any]]:
         return self.repository.list_sessions()
 
+    def delete_session(self, session_id: str) -> None:
+        self.repository.delete_session(session_id)
+
     def close(self) -> None:
         self.repository.close()
 

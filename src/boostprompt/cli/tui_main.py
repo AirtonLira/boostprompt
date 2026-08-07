@@ -37,6 +37,8 @@ class SessionService(Protocol):
 
     def list_sessions(self) -> list[dict[str, Any]]: ...
 
+    def delete_session(self, session_id: str) -> None: ...
+
 
 class MainMenu(Screen[None]):
     """Tela inicial com os caminhos de sessão disponíveis."""
@@ -141,6 +143,7 @@ class SessionsListScreen(Screen[None]):
     def __init__(self) -> None:
         super().__init__()
         self._sessions_by_item_id: dict[str, dict[str, Any]] = {}
+        self._pending_delete_item_id: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -151,6 +154,7 @@ class SessionsListScreen(Screen[None]):
         with Horizontal(id="sessions-actions"):
             yield Button("Voltar", id="back")
             yield Button("Atualizar", id="refresh", variant="primary")
+            yield Button("Excluir sessão", id="delete", variant="error")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -162,6 +166,8 @@ class SessionsListScreen(Screen[None]):
         list_view = self.query_one("#sessions-list-view", ListView)
         await list_view.clear()
         self._sessions_by_item_id.clear()
+        self._pending_delete_item_id = None
+        self.query_one("#delete", Button).label = "Excluir sessão"
         sessions = self.boostprompt_app.service.list_sessions()
         if not sessions:
             await list_view.append(ListItem(Static("Nenhuma sessão encontrada."), id="empty"))
@@ -186,6 +192,26 @@ class SessionsListScreen(Screen[None]):
             self.app.pop_screen()
         elif event.button.id == "refresh":
             await self._load_sessions()
+        elif event.button.id == "delete":
+            await self._delete_selected_session()
+
+    async def _delete_selected_session(self) -> None:
+        list_view = self.query_one("#sessions-list-view", ListView)
+        delete_button = self.query_one("#delete", Button)
+        highlighted = list_view.highlighted_child
+        if highlighted is None or highlighted.id not in self._sessions_by_item_id:
+            self.notify("Selecione uma sessão para excluir.", severity="warning")
+            return
+        if self._pending_delete_item_id != highlighted.id:
+            self._pending_delete_item_id = highlighted.id
+            delete_button.label = "Confirmar exclusão?"
+            return
+        self._pending_delete_item_id = None
+        delete_button.label = "Excluir sessão"
+        session_id = self._sessions_by_item_id[highlighted.id]["id"]
+        self.boostprompt_app.service.delete_session(session_id)
+        await self._load_sessions()
+        self.notify("Sessão excluída.")
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         item_id = event.item.id

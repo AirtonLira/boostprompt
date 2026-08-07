@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from textual.widgets import Input, LoadingIndicator
+from textual.widgets import Input, ListView, LoadingIndicator
 
 from boostprompt.cli.tui_main import BoostPromptApp, ChatScreen, MarkdownPreviewScreen
 from boostprompt.memory.duckdb_store import ResumedSession
@@ -12,9 +12,13 @@ class FakeService:
     def __init__(self) -> None:
         self.created_mode: DiscoveryMode | None = None
         self.submitted: list[tuple[str, str]] = []
+        self.deleted: list[str] = []
 
     def list_sessions(self):
         return []
+
+    def delete_session(self, session_id: str) -> None:
+        self.deleted.append(session_id)
 
     async def create_session(self, name: str, mode: DiscoveryMode) -> Session:
         self.created_mode = mode
@@ -142,6 +146,27 @@ async def test_chat_writes_the_final_markdown_and_opens_its_preview(tmp_path, mo
         assert (tmp_path / "output" / "Portal_final_escopo.md").read_text(encoding="utf-8") == (
             "# Escopo da Solução\n\n## 1. Resumo executivo"
         )
+
+
+@pytest.mark.asyncio
+async def test_deleting_selected_session_requires_a_confirmation_click() -> None:
+    service = ResumingFinalService()
+    app = BoostPromptApp(service=service)
+
+    async with app.run_test() as pilot:
+        await pilot.click("#list_sessions")
+        await pilot.pause()
+        app.screen.query_one("#sessions-list-view", ListView).index = 0
+        await pilot.pause()
+
+        await pilot.click("#delete")
+        await pilot.pause()
+        assert service.deleted == []
+
+        await pilot.pause(0.25)  # aguarda o efeito visual do clique liberar o botão
+        await pilot.click("#delete")
+        await pilot.pause()
+        assert service.deleted == [service.session.id]
 
 
 @pytest.mark.asyncio
