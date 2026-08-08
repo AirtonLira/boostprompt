@@ -18,6 +18,7 @@ from textual.widgets import (
     ListItem,
     ListView,
     LoadingIndicator,
+    Markdown,
     Static,
     TextArea,
 )
@@ -79,7 +80,7 @@ class NewSessionScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="new-session-form"):
-            yield Static("## Nova sessão")
+            yield Markdown("## Nova sessão")
             yield Label("Nome da sessão:")
             yield Input(placeholder="Ex.: API de pagamentos", id="session-name-input")
             yield Static(self._mode_description(), id="mode-description")
@@ -148,7 +149,7 @@ class SessionsListScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="sessions-list"):
-            yield Static("## Sessões salvas")
+            yield Markdown("## Sessões salvas")
             yield LoadingIndicator(id="loading")
             yield ListView(id="sessions-list-view")
         with Horizontal(id="sessions-actions"):
@@ -232,7 +233,7 @@ class ResumeSessionScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="resume-session-form"):
-            yield Static("## Retomar sessão")
+            yield Markdown("## Retomar sessão")
             yield Label("Código da sessão:")
             yield Input(placeholder="BP-2026-001", id="session-code-input")
             with Horizontal():
@@ -275,7 +276,7 @@ class ChatScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="chat-container"):
-            yield Static(f"## {self.session.nome}", id="chat-title")
+            yield Markdown(f"## {self.session.nome}", id="chat-title")
             with ScrollableContainer(id="chat-messages"):
                 pass
             with Horizontal(id="chat-input-area"):
@@ -346,7 +347,7 @@ class ChatScreen(Screen[None]):
     def _render_message(self, role: str, content: str) -> None:
         container = self.query_one("#chat-messages", ScrollableContainer)
         message_style = "user-message" if role == "user" else "assistant-message"
-        container.mount(Static(f"**{role.capitalize()}:**\n{content}", classes=message_style))
+        container.mount(Markdown(f"**{role.capitalize()}:**\n\n{content}", classes=message_style))
         container.scroll_end(animate=False)
 
     def _open_markdown(self) -> None:
@@ -376,7 +377,7 @@ class MarkdownPreviewScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="markdown-preview"):
-            yield Static(f"## Preview: {self.file_path}")
+            yield Markdown(f"## Preview: {self.file_path}")
             yield TextArea(self.markdown_content, language="markdown", read_only=True)
             yield Button("Voltar", id="back")
         yield Footer()
