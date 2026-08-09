@@ -51,22 +51,29 @@ Também são aceitos os nomes legados `LITELLM_BASE_URL` e `API_KEY`. Para apont
 para outro arquivo, exporte `BOOSTPROMPT_ENV_FILE=/caminho/para/arquivo.env` antes
 de executar a CLI. `DUCKDB_PATH` é opcional e define o banco local.
 
+Para usar OpenAI diretamente, configure `OPENAI_API_KEY` e, opcionalmente,
+`OPENAI_MODEL` e `OPENAI_BASE_URL`.
+
 ### Iniciar a aplicação
 
 ```bash
 uv run boostprompt
 ```
 
-O menu permite criar uma sessão, listar sessões salvas ou retomar uma sessão pelo código `BP-AAAA-NNN`.
+Ao iniciar, escolha **Usar LiteLLM** ou **Usar OpenAI**. A aplicação valida as
+variáveis correspondentes no `.env` antes de abrir o menu, que permite criar uma
+sessão, listar sessões salvas ou retomar uma sessão pelo código `BP-AAAA-NNN`.
 
 ### Fluxo de uma sessão
 
-1. Escolha **Nova sessão**.
-2. Informe um nome identificável.
-3. Escolha o modo de saída.
-4. Descreva a demanda inicial.
-5. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação faz entre 30 e 50 perguntas, adaptadas às respostas anteriores.
-6. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o arquivo.
+1. Escolha o provedor de modelo.
+2. Escolha **Nova sessão**.
+3. Informe um nome identificável.
+4. Escolha o modo de saída.
+5. Descreva a demanda inicial.
+6. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação faz entre 30 e 50 perguntas, adaptadas às respostas anteriores.
+7. Depois de dez respostas, selecione **Gerar prompt agora** para salvar um rascunho sem encerrar a entrevista. Continue respondendo para refiná-lo.
+8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o arquivo.
 
 Cada interação é persistida automaticamente. Não há botão de salvar.
 
@@ -82,6 +89,11 @@ O banco padrão é `data/boostprompt.db`. Ele armazena:
 - Markdown final gerado.
 
 Ao retomar uma sessão, a aplicação carrega as mensagens recentes e um resumo com objetivo, fatos confirmados, decisões, restrições, riscos e pendências. O Markdown final também fica disponível novamente para abrir ou salvar.
+
+Ao abrir uma sessão concluída, a aplicação exibe esse resumo em bullets e oferece
+**Continuar em nova entrevista**. A continuação cria outra sessão com novo código
+e usa apenas o resumo estruturado da anterior, preservando o histórico original e
+mantendo o contexto do modelo compacto.
 
 O arquivo exportado fica em:
 
