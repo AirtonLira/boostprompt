@@ -8,6 +8,16 @@ Permitir que uma entrevista de discovery gere um prompt antes de ser concluída,
 
 O recurso se aplica ao modo `prompt_desenvolvimento`. O modo `roteiro_perguntas_cliente` continua gerando seu documento em uma única interação, como já acontece.
 
+## Seleção de provedor de modelo
+
+Antes de abrir o menu principal, a TUI exibirá duas ações: `Usar LiteLLM` e `Usar OpenAI`. A escolha cria o serviço padrão somente depois de o provedor ser definido; por isso, a opção escolhida realmente determina o modelo usado nos agentes da sessão.
+
+`Usar LiteLLM` exige `LLM_MODEL` e uma URL em `LLM_BASE_URL` ou `LITELLM_BASE_URL`; a chave é lida de `LLM_API_KEY`, `LITELLM_API_KEY` ou `API_KEY`. `Usar OpenAI` exige `OPENAI_API_KEY`, usa `OPENAI_MODEL` quando existir (ou `LLM_MODEL` como fallback) e pode usar `OPENAI_BASE_URL` opcional. Ambos os caminhos usam o mesmo adaptador OpenAI-compatible do PydanticAI, pois LiteLLM expõe esse contrato.
+
+Configuração ausente ou incompleta mantém a pessoa na tela de seleção e apresenta uma mensagem acionável, sem mostrar valores de credenciais. A escolha vale enquanto a aplicação estiver aberta; ao reiniciar, a pessoa seleciona o provedor novamente. Serviços injetados nos testes continuam sendo usados diretamente e não mostram a seleção.
+
+Os testes não dependem de `.env` local ou de chave real: testes de agentes usam o modelo de teste do PydanticAI, e testes de configuração criam arquivos de ambiente temporários para validar LiteLLM e OpenAI.
+
 ## Geração antecipada
 
 Na tela de chat de uma sessão de desenvolvimento, será exibida uma ação separada para gerar o prompt atual. Ela permanece indisponível até que a sessão tenha dez perguntas respondidas.

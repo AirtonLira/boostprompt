@@ -15,11 +15,71 @@
 - Uma geração antecipada não insere uma mensagem vazia, não conclui a sessão e a marca como `in_progress`.
 - Conclusões normais e roteiros para cliente ficam com status `completed`.
 - A continuação cria uma sessão nova; não copia o histórico e injeta somente o `SessionSummary` persistido nela.
+- A TUI exige selecionar LiteLLM ou OpenAI antes de criar o serviço padrão; serviços injetados seguem disponíveis para testes.
 - Os comandos de terminal devem usar o prefixo `rtk`.
 
 ---
 
-### Task 1: Sinalizar finalização antecipada no workflow
+### Task 1: Configurar e selecionar o provedor de modelo
+
+**Files:**
+
+- Modify: `src/boostprompt/llm.py`
+- Modify: `src/boostprompt/cli/tui_main.py`
+- Modify: `tests/test_llm_configuration.py`
+- Modify: `tests/test_agents_contract.py`
+- Modify: `tests/test_final_agents.py`
+
+**Interfaces:**
+
+- Consumes: `LLM_PROVIDER`, `LLM_MODEL`, `LLM_BASE_URL`, `LITELLM_BASE_URL`, `LLM_API_KEY`, `LITELLM_API_KEY`, `API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL` e `OPENAI_API_KEY`.
+- Produces: `ModelProvider` com valores `litellm` e `openai`; `OpenAICompatibleSettings.from_environment(provider)`; uma tela Textual de seleção que inicializa o `DiscoveryWorkflowService` apenas após a escolha.
+
+- [ ] **Step 1: Write the failing tests**
+
+Em `tests/test_llm_configuration.py`, acrescente um teste com arquivo temporário contendo `OPENAI_MODEL=gpt-4.1-mini` e `OPENAI_API_KEY=token-openai`; limpe as demais variáveis e verifique que `OpenAICompatibleSettings.from_environment(ModelProvider.OPENAI).build_model()` retorna `OpenAIChatModel` com o modelo configurado e sem `base_url` customizada.
+
+Acrescente um teste equivalente para LiteLLM, chamando `from_environment(ModelProvider.LITELLM)` com `LITELLM_BASE_URL`, `API_KEY` e `LLM_MODEL`. O caso sem URL LiteLLM deve lançar `ValueError` contendo `LITELLM_BASE_URL`.
+
+Em `tests/test_tui.py`, instancie `BoostPromptApp()` sem serviço injetado, confirme que a primeira tela contém `#select-litellm` e `#select-openai`, e que clicar sem configuração exibe erro sem abrir `MainMenu`. Crie um arquivo `.env` temporário LiteLLM, defina `BOOSTPROMPT_ENV_FILE`, clique `#select-litellm` e confirme que a tela seguinte é `MainMenu`.
+
+Nos testes que instanciam agentes diretamente apenas para substituir `agent.agent` por um fake, passe `model="test"`; assim eles deixam de tentar inicializar OpenAI real. Não altere os testes que validam explicitamente a construção pelo ambiente.
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `rtk pytest tests/test_llm_configuration.py tests/test_tui.py tests/test_agents_contract.py tests/test_final_agents.py -q`
+
+Expected: FAIL porque `ModelProvider`, a tela de seleção e o argumento `provider` ainda não existem; os testes de agentes também reproduzem a dependência indevida de `OPENAI_API_KEY`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Em `src/boostprompt/llm.py`, crie:
+
+```python
+class ModelProvider(StrEnum):
+    LITELLM = "litellm"
+    OPENAI = "openai"
+```
+
+Faça `OpenAICompatibleSettings.from_environment(provider: ModelProvider)` resolver somente as variáveis daquele provedor. Para LiteLLM, valide modelo, URL e chave; para OpenAI, valide modelo e `OPENAI_API_KEY`, e mantenha `OPENAI_BASE_URL` opcional. Preserve `build_model()` usando `OpenAIProvider` e `OpenAIChatModel`.
+
+Em `DiscoveryWorkflowService.create_default`, exija e repasse `provider: ModelProvider`. Em `BoostPromptApp`, aceite um serviço injetado como hoje; quando ele não existir, comece em `ProviderSelectionScreen`. Essa tela chama `DiscoveryWorkflowService.create_default(provider=...)`, captura `ValueError` e só abre `MainMenu` quando o serviço foi construído. Os botões são `#select-litellm` e `#select-openai`.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `rtk pytest tests/test_llm_configuration.py tests/test_tui.py tests/test_agents_contract.py tests/test_final_agents.py -q`
+
+Expected: PASS; nenhum teste usa segredo real e o fluxo LiteLLM do `.env` é validado sem depender do diretório atual.
+
+- [ ] **Step 5: Commit**
+
+```bash
+rtk git add src/boostprompt/llm.py src/boostprompt/services/discovery_workflow.py src/boostprompt/cli/tui_main.py tests/test_llm_configuration.py tests/test_tui.py tests/test_agents_contract.py tests/test_final_agents.py
+rtk git commit -m "feat: select LiteLLM or OpenAI in the TUI"
+```
+
+### Task 2: Sinalizar finalização antecipada no workflow
+
 
 **Files:**
 
@@ -101,7 +161,7 @@ rtk git add src/boostprompt/graph/workflow.py tests/test_workflow.py
 rtk git commit -m "feat: allow forced workflow finalization"
 ```
 
-### Task 2: Persistir estado de geração e sessões de continuação
+### Task 3: Persistir estado de geração e sessões de continuação
 
 **Files:**
 
@@ -193,7 +253,7 @@ rtk git add src/boostprompt/memory/duckdb_store.py tests/test_duckdb_store.py
 rtk git commit -m "feat: persist partial prompts and continuation sessions"
 ```
 
-### Task 3: Expor geração antecipada e continuação no serviço
+### Task 4: Expor geração antecipada e continuação no serviço
 
 **Files:**
 
@@ -285,7 +345,7 @@ rtk git add src/boostprompt/services/discovery_workflow.py tests/test_discovery_
 rtk git commit -m "feat: generate partial prompts and continue completed sessions"
 ```
 
-### Task 4: Disponibilizar os fluxos na TUI
+### Task 5: Disponibilizar os fluxos na TUI
 
 **Files:**
 
@@ -377,7 +437,7 @@ rtk git add src/boostprompt/cli/tui_main.py tests/test_tui.py
 rtk git commit -m "feat: expose partial prompt and continuation actions"
 ```
 
-### Task 5: Verificação integrada e regressão
+### Task 6: Verificação integrada e regressão
 
 **Files:**
 
@@ -454,7 +514,7 @@ Expected: todos os comandos passam; qualquer falha preexistente deve ser reporta
 Run:
 
 ```bash
-rtk git diff HEAD~4..HEAD
+rtk git diff main...HEAD
 rtk git status
 ```
 
