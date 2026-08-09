@@ -24,7 +24,7 @@ from textual.widgets import (
 )
 
 from boostprompt.llm import ModelProvider
-from boostprompt.models.schemas import DiscoveryMode, Session, TurnResult
+from boostprompt.models.schemas import DiscoveryMode, Session, SessionSummary, TurnResult
 from boostprompt.services.discovery_workflow import DiscoveryWorkflowService
 
 BindingDefinition: TypeAlias = Binding | tuple[str, str] | tuple[str, str, str]
@@ -34,6 +34,10 @@ class SessionService(Protocol):
     async def create_session(self, name: str, mode: DiscoveryMode) -> Session: ...
 
     async def submit_answer(self, session_id: str, answer: str) -> TurnResult: ...
+
+    async def generate_partial_prompt(self, session_id: str) -> TurnResult: ...
+
+    async def continue_completed_session(self, session_id: str) -> Session: ...
 
     def resume_session(self, session_id: str) -> Any: ...
 
@@ -316,7 +320,9 @@ class ChatScreen(Screen[None]):
                 yield Input(placeholder="Digite sua resposta ou demanda...", id="chat-input")
                 yield Button("Enviar", id="send", variant="primary")
         with Horizontal(id="chat-actions"):
+            yield Button("Gerar prompt agora", id="generate-partial", variant="success", disabled=True)
             yield Button("Gerar/abrir Markdown", id="generate", variant="success")
+            yield Button("Continuar em nova entrevista", id="continue-session", disabled=True)
             yield Button("Voltar", id="back", variant="error")
         yield Footer()
 
@@ -326,21 +332,26 @@ class ChatScreen(Screen[None]):
                 "assistant",
                 "Sessão criada e salva localmente. Descreva a demanda para começar.",
             )
+            self._update_action_availability()
             return
         resumed = self.boostprompt_app.service.resume_session(self.session.id)
+        self.session = resumed.session
         for message in resumed.messages:
             self._render_message(message.role, message.content)
         if resumed.summary.goal:
-            self._render_message(
-                "system",
-                f"Resumo recuperado: {resumed.summary.goal}",
+            summary = (
+                self._format_summary(resumed.summary)
+                if self.session.status == "completed"
+                else f"Resumo recuperado: {resumed.summary.goal}"
             )
+            self._render_message("system", summary)
         self.final_markdown = resumed.final_markdown
         if self.final_markdown is not None:
             self._render_message(
                 "system",
                 "O Markdown final recuperado está disponível para abrir ou salvar.",
             )
+        self._update_action_availability()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -349,6 +360,10 @@ class ChatScreen(Screen[None]):
             await self._send_message()
         elif event.button.id == "generate":
             self._open_markdown()
+        elif event.button.id == "generate-partial":
+            await self._generate_partial_prompt()
+        elif event.button.id == "continue-session":
+            await self._continue_session()
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "chat-input":
@@ -368,6 +383,17 @@ class ChatScreen(Screen[None]):
             self._render_message("user", message)
             self._render_message("assistant", result.display_message)
             self.final_markdown = result.final_markdown
+            self.session = self.session.model_copy(
+                update={
+                    "questions_count": result.questions_count,
+                    "status": (
+                        "completed"
+                        if result.final_markdown is not None and not result.awaiting_user_answer
+                        else self.session.status
+                    ),
+                }
+            )
+            self._update_action_availability()
             if result.research_degraded:
                 self.notify("Pesquisa indisponível; turno continuou em modo degradado.", severity="warning")
             elif result.research_findings:
@@ -376,6 +402,53 @@ class ChatScreen(Screen[None]):
             input_widget.value = ""
             input_widget.disabled = False
             input_widget.focus()
+
+    async def _generate_partial_prompt(self) -> None:
+        try:
+            result = await self.boostprompt_app.service.generate_partial_prompt(self.session.id)
+        except (RuntimeError, ValueError) as error:
+            self.notify(f"Não foi possível gerar o prompt: {error}", severity="error")
+            return
+        self.final_markdown = result.final_markdown
+        self.session = self.session.model_copy(
+            update={"questions_count": result.questions_count, "status": "in_progress"}
+        )
+        self._render_message("assistant", result.display_message)
+        self._update_action_availability()
+        self.notify("Rascunho do prompt salvo. Você pode continuar a entrevista.")
+
+    async def _continue_session(self) -> None:
+        try:
+            continuation = await self.boostprompt_app.service.continue_completed_session(
+                self.session.id
+            )
+        except (RuntimeError, ValueError) as error:
+            self.notify(f"Não foi possível iniciar a continuação: {error}", severity="error")
+            return
+        self.app.push_screen(ChatScreen(session=continuation, is_new=False))
+
+    def _update_action_availability(self) -> None:
+        partial_enabled = (
+            self.session.mode is DiscoveryMode.PROMPT_DESENVOLVIMENTO
+            and self.session.questions_count >= 10
+            and self.session.status != "completed"
+        )
+        self.query_one("#generate-partial", Button).disabled = not partial_enabled
+        self.query_one("#continue-session", Button).disabled = self.session.status != "completed"
+
+    @staticmethod
+    def _format_summary(summary: SessionSummary) -> str:
+        groups = {
+            "Fatos confirmados": summary.confirmed_facts,
+            "Decisões": summary.decisions,
+            "Restrições": summary.constraints,
+            "Riscos": summary.risks,
+            "Pendências": summary.pending_topics,
+        }
+        lines = ["## Resumo da sessão concluída", f"- Objetivo: {summary.goal}"]
+        for title, items in groups.items():
+            lines.extend(f"- {title}: {item}" for item in items)
+        return "\n".join(lines)
 
     def _render_message(self, role: str, content: str) -> None:
         container = self.query_one("#chat-messages", ScrollableContainer)

@@ -13,6 +13,7 @@ class FakeService:
         self.created_mode: DiscoveryMode | None = None
         self.submitted: list[tuple[str, str]] = []
         self.deleted: list[str] = []
+        self.partial_prompts: list[str] = []
 
     def list_sessions(self):
         return []
@@ -41,6 +42,16 @@ class FakeService:
             awaiting_user_answer=True,
         )
 
+    async def generate_partial_prompt(self, session_id: str) -> TurnResult:
+        self.partial_prompts.append(session_id)
+        return TurnResult(
+            display_message="Rascunho do prompt gerado.",
+            context={"necessidade": "API"},
+            questions_count=10,
+            awaiting_user_answer=False,
+            final_markdown="# Rascunho do Prompt",
+        )
+
 
 class FinalMarkdownService(FakeService):
     async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
@@ -51,6 +62,17 @@ class FinalMarkdownService(FakeService):
             questions_count=30,
             awaiting_user_answer=False,
             final_markdown="# Escopo da Solução\n\n## 1. Resumo executivo",
+        )
+
+
+class TenAnswerService(FakeService):
+    async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
+        self.submitted.append((session_id, answer))
+        return TurnResult(
+            display_message="### Pergunta 10 — Escopo",
+            context={"necessidade": answer},
+            questions_count=10,
+            awaiting_user_answer=True,
         )
 
 
@@ -65,13 +87,32 @@ class ResumingFinalService(FakeService):
             mode=DiscoveryMode.PROMPT_DESENVOLVIMENTO,
             created_at=now,
             updated_at=now,
+            status="completed",
             questions_count=30,
+        )
+        self.continued_from: str | None = None
+        self.continuation = Session(
+            id="session-continuation",
+            codigo="BP-2026-051",
+            nome="Portal final — continuação",
+            mode=DiscoveryMode.PROMPT_DESENVOLVIMENTO,
+            created_at=now,
+            updated_at=now,
         )
 
     def list_sessions(self):
         return [self.session.model_dump()]
 
     def resume_session(self, session_id: str) -> ResumedSession:
+        if session_id == self.continuation.id:
+            return ResumedSession(
+                session=self.continuation,
+                messages=[],
+                context={"sessao_origem": {"id": self.session.id}},
+                summary=SessionSummary(goal="Portal concluído", decisions=["Entregar MVP"]),
+                decisions=[],
+                final_markdown=None,
+            )
         assert session_id == self.session.id
         return ResumedSession(
             session=self.session,
@@ -81,6 +122,11 @@ class ResumingFinalService(FakeService):
             decisions=[],
             final_markdown="# Escopo da Solução\n\n## 1. Resumo executivo",
         )
+
+    async def continue_completed_session(self, session_id: str) -> Session:
+        assert session_id == self.session.id
+        self.continued_from = session_id
+        return self.continuation
 
 
 @pytest.mark.asyncio
@@ -137,7 +183,7 @@ async def test_refreshing_session_list_keeps_loading_widget_mounted() -> None:
 
 @pytest.mark.asyncio
 async def test_new_session_collects_output_mode_before_opening_chat() -> None:
-    service = FakeService()
+    service = TenAnswerService()
     app = BoostPromptApp(service=service)
 
     async with app.run_test() as pilot:
@@ -165,6 +211,33 @@ async def test_chat_submission_delegates_one_turn_to_the_session_service() -> No
         await pilot.pause()
 
         assert service.submitted == [("session-1", "Preciso de uma API de cobrança.")]
+
+
+@pytest.mark.asyncio
+async def test_partial_prompt_button_becomes_available_after_ten_answers_and_opens_the_draft(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    service = TenAnswerService()
+    app = BoostPromptApp(service=service)
+
+    async with app.run_test() as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        assert app.screen.query_one("#generate-partial", Button).disabled is True
+
+        app.screen.query_one("#chat-input", Input).value = "Preciso de uma API."
+        await pilot.click("#send")
+        await pilot.pause()
+        assert app.screen.query_one("#generate-partial", Button).disabled is False
+
+        await pilot.click("#generate-partial")
+        await pilot.pause()
+        await pilot.click("#generate")
+        await pilot.pause()
+
+        assert service.partial_prompts == ["session-1"]
+        assert isinstance(app.screen, MarkdownPreviewScreen)
+        assert (tmp_path / "output" / "API_escopo.md").read_text(encoding="utf-8") == "# Rascunho do Prompt"
 
 
 @pytest.mark.asyncio
@@ -226,3 +299,21 @@ async def test_resumed_session_restores_the_final_markdown_for_download(tmp_path
         await pilot.pause()
 
         assert isinstance(app.screen, MarkdownPreviewScreen)
+
+
+@pytest.mark.asyncio
+async def test_completed_session_can_start_a_compact_continuation() -> None:
+    service = ResumingFinalService()
+    app = BoostPromptApp(service=service)
+
+    async with app.run_test() as pilot:
+        await pilot.click("#list_sessions")
+        app.screen.query_one("#sessions-list-view", ListView).index = 0
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.click("#continue-session")
+        await pilot.pause()
+
+        assert service.continued_from == "session-final"
+        assert isinstance(app.screen, ChatScreen)
+        assert "continuação" in app.screen.session.nome
