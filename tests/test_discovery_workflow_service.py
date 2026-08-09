@@ -105,18 +105,32 @@ class CapturingSummaryAgent:
         )
 
 
+class PartialThenQuestionWorkflow:
+    async def run_turn(self, state):
+        if state.get("force_finalize"):
+            return TurnResult(
+                display_message="Rascunho gerado.",
+                context=state["context"],
+                questions_count=state["questions_count"],
+                awaiting_user_answer=False,
+                final_markdown="# Rascunho",
+            )
+        return TurnResult(
+            display_message="### Pergunta 11 — Escopo",
+            context=state["context"],
+            questions_count=state["questions_count"] + 1,
+            awaiting_user_answer=True,
+        )
+
+
 def test_default_service_builds_all_pydantic_ai_agents(tmp_path, monkeypatch) -> None:
     """Garante compatibilidade com a API PydanticAI instalada, sem chamar o modelo."""
 
     env_file = tmp_path / "litellm.env"
     env_file.write_text(
-        "\n".join(
-            [
-                "LLM_MODEL=litellm/gpt-4.1-mini",
-                "LITELLM_BASE_URL=https://litellm.example.test/v1",
-                "API_KEY=token-for-test",
-            ]
-        ),
+        "LLM_MODEL=litellm/gpt-4.1-mini\n"
+        "LITELLM_BASE_URL=https://litellm.example.test/v1\n"
+        "API_KEY=token-for-test",
         encoding="utf-8",
     )
     monkeypatch.setenv("BOOSTPROMPT_ENV_FILE", str(env_file))
@@ -298,6 +312,25 @@ async def test_continuation_rejects_a_session_that_is_not_completed(tmp_path) ->
 
     with pytest.raises(ValueError, match="concluídas"):
         await service.continue_completed_session(session.id)
+
+
+@pytest.mark.asyncio
+async def test_session_accepts_new_answers_after_partial_prompt_generation(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=PartialThenQuestionWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+
+    await service.generate_partial_prompt(session.id)
+    await service.submit_answer(session.id, "A nova feature terá auditoria.")
+
+    resumed = service.resume_session(session.id)
+    assert resumed.session.status == "in_progress"
+    assert resumed.session.questions_count == 11
+    assert service.repository.get_messages(session.id)[-1]["content"] == "### Pergunta 11 — Escopo"
 
 
 def test_research_query_ignores_common_words_that_only_contain_a_technical_substring(tmp_path) -> None:

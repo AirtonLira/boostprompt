@@ -189,7 +189,7 @@ async def test_summary_agent_uses_its_pydantic_ai_output_when_no_custom_runner_i
                 {"output": SessionSummary(goal="Portal de fornecedores")},
             )()
 
-    summary_agent = SummaryAgent()
+    summary_agent = SummaryAgent(model="test")
     summary_agent._agent = StaticAgent()
 
     summary = await summary_agent.summarize(
@@ -216,7 +216,7 @@ async def test_question_guide_uses_its_pydantic_ai_output_when_no_custom_runner_
                 },
             )()
 
-    guide_agent = QuestionGuideAgent()
+    guide_agent = QuestionGuideAgent(model="test")
     guide_agent._agent = StaticAgent()
 
     guide = await guide_agent.create_guide(demand="Portal", research_context="")

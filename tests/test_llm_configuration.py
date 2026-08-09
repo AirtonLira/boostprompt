@@ -50,12 +50,7 @@ def test_default_service_uses_litellm_environment_for_openai_compatible_model(
 def test_openai_provider_uses_its_own_environment_variables(tmp_path: Path, monkeypatch) -> None:
     env_file = tmp_path / "openai.env"
     env_file.write_text(
-        "\n".join(
-            [
-                "OPENAI_MODEL=gpt-4.1-mini",
-                "OPENAI_API_KEY=token-openai",
-            ]
-        ),
+        "OPENAI_MODEL=gpt-4.1-mini\nOPENAI_API_KEY=token-openai",
         encoding="utf-8",
     )
     for name in (

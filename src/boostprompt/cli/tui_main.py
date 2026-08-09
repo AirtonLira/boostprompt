@@ -63,7 +63,10 @@ class ProviderSelectionScreen(Screen[None]):
             "select-litellm": ModelProvider.LITELLM,
             "select-openai": ModelProvider.OPENAI,
         }
-        provider = providers.get(event.button.id)
+        button_id = event.button.id
+        if button_id is None:
+            return
+        provider = providers.get(button_id)
         if provider is None:
             return
         try:
@@ -514,16 +517,22 @@ class BoostPromptApp(App[None]):
 
     def __init__(self, service: SessionService | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.service = service
+        self._service = service
 
     def on_mount(self) -> None:
-        self.push_screen(MainMenu() if self.service is not None else ProviderSelectionScreen())
+        self.push_screen(MainMenu() if self._service is not None else ProviderSelectionScreen())
 
     def configure_provider(self, provider: ModelProvider) -> None:
-        self.service = DiscoveryWorkflowService.create_default(provider=provider)
+        self._service = DiscoveryWorkflowService.create_default(provider=provider)
+
+    @property
+    def service(self) -> SessionService:
+        if self._service is None:
+            raise RuntimeError("Selecione um provedor de modelo antes de iniciar uma sessão.")
+        return self._service
 
     def on_unmount(self) -> None:
-        close = getattr(self.service, "close", None)
+        close = getattr(self._service, "close", None)
         if callable(close):
             close()
 
