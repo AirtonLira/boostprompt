@@ -154,6 +154,17 @@ class DuckDBStore:
             """
         )
         self._drop_legacy_session_foreign_keys()
+        self.conn.execute(
+            """
+            UPDATE sessions
+            SET status = 'completed'
+            WHERE status = 'active'
+              AND EXISTS (
+                  SELECT 1 FROM final_documents
+                  WHERE final_documents.session_id = sessions.id
+              )
+            """
+        )
 
     def _drop_legacy_session_foreign_keys(self) -> None:
         """Recria sem FK as tabelas de bancos antigos (criados pelo setup_project.sh).
@@ -235,24 +246,27 @@ class DuckDBStore:
             updated_at=now,
         )
         with self.transaction():
-            self.conn.execute(
-                """
-                INSERT INTO sessions (
-                    id, codigo, nome, mode, created_at, updated_at, status, questions_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    session.id,
-                    session.codigo,
-                    session.nome,
-                    session.mode.value,
-                    session.created_at,
-                    session.updated_at,
-                    session.status,
-                    session.questions_count,
-                ],
-            )
+            self._insert_session(session)
         return session
+
+    def _insert_session(self, session: Session) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO sessions (
+                id, codigo, nome, mode, created_at, updated_at, status, questions_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                session.id,
+                session.codigo,
+                session.nome,
+                session.mode.value,
+                session.created_at,
+                session.updated_at,
+                session.status,
+                session.questions_count,
+            ],
+        )
 
     def _get_next_code(self, year: int) -> str:
         row = self.conn.execute(
@@ -408,6 +422,23 @@ class DuckDBStore:
         with self.transaction():
             self._save_final_markdown(session_id, markdown)
 
+    def save_generated_markdown(
+        self,
+        session_id: str,
+        context: dict[str, Any],
+        questions_count: int,
+        status: str,
+        markdown: str,
+    ) -> None:
+        """Persiste um documento gerado sem acrescentar uma mensagem ao histórico."""
+
+        if not self.get_session(session_id):
+            raise KeyError(f"Sessão {session_id} não encontrada")
+        with self.transaction():
+            self._save_context_snapshot(session_id, context, questions_count)
+            self._save_final_markdown(session_id, markdown)
+            self.set_session_status(session_id, status)
+
     def _save_final_markdown(self, session_id: str, markdown: str) -> None:
         self.conn.execute("DELETE FROM final_documents WHERE session_id = ?", [session_id])
         self.conn.execute(
@@ -416,6 +447,12 @@ class DuckDBStore:
             VALUES (?, ?, ?)
             """,
             [session_id, markdown, _utc_now()],
+        )
+
+    def set_session_status(self, session_id: str, status: str) -> None:
+        self.conn.execute(
+            "UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?",
+            [status, _utc_now(), session_id],
         )
 
     def get_final_markdown(self, session_id: str) -> str | None:
@@ -439,20 +476,48 @@ class DuckDBStore:
 
     def save_summary(self, session_id: str, summary: SessionSummary) -> None:
         with self.transaction():
-            self.conn.execute(
-                """
-                INSERT INTO session_summaries (
-                    id, session_id, summary_data, summarized_through_sequence, created_at
-                ) VALUES (?, ?, ?, ?, ?)
-                """,
-                [
-                    str(uuid.uuid4()),
-                    session_id,
-                    summary.model_dump_json(),
-                    summary.summarized_through_sequence,
-                    _utc_now(),
-                ],
-            )
+            self._save_summary(session_id, summary)
+
+    def _save_summary(self, session_id: str, summary: SessionSummary) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO session_summaries (
+                id, session_id, summary_data, summarized_through_sequence, created_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()),
+                session_id,
+                summary.model_dump_json(),
+                summary.summarized_through_sequence,
+                _utc_now(),
+            ],
+        )
+
+    def create_continuation(self, source: Session, summary: SessionSummary) -> Session:
+        """Cria uma sessão nova com apenas o contexto compacto da sessão concluída."""
+
+        now = _utc_now()
+        continuation = Session(
+            id=str(uuid.uuid4()),
+            codigo=f"BP-{now.year}-{self._get_next_code(now.year)}",
+            nome=f"{source.nome} — continuação",
+            mode=source.mode,
+            created_at=now,
+            updated_at=now,
+        )
+        context = {
+            "sessao_origem": {
+                "id": source.id,
+                "codigo": source.codigo,
+                "nome": source.nome,
+            }
+        }
+        with self.transaction():
+            self._insert_session(continuation)
+            self._save_summary(continuation.id, summary)
+            self._save_context_snapshot(continuation.id, context, 0)
+        return continuation
 
     def get_latest_summary(self, session_id: str) -> SessionSummary | None:
         row = self.conn.execute(
