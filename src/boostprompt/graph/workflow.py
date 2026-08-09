@@ -33,6 +33,7 @@ class TurnState(TypedDict, total=False):
     research_findings: list[ResearchFinding]
     research_references: list[ResearchFinding]
     research_degraded: bool
+    force_finalize: bool
     should_finalize: bool
     awaiting_user_answer: bool
     display_message: str
@@ -159,6 +160,8 @@ class TurnWorkflow:
 
     @staticmethod
     def _route_after_research(state: TurnState) -> str:
+        if state.get("force_finalize", False):
+            return "finalize"
         if state["mode"] is DiscoveryMode.ROTEIRO_PERGUNTAS_CLIENTE:
             return "guide"
         return "discovery"

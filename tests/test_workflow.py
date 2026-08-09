@@ -139,6 +139,32 @@ async def test_workflow_runs_final_agents_only_when_discovery_can_finish_after_m
 
 
 @pytest.mark.asyncio
+async def test_workflow_finalizes_without_discovery_when_forced() -> None:
+    discovery = FakeDiscovery(
+        DiscoveryResponse(question=question(), should_continue=True, summary="Não usar.")
+    )
+    synthesis = FakeFinalAgent("# Escopo parcial")
+    workflow = TurnWorkflow(
+        WorkflowAgents(
+            discovery=discovery,
+            architecture=FakeFinalAgent(),
+            security=FakeFinalAgent(),
+            delivery=FakeFinalAgent(),
+            synthesis=synthesis,
+        )
+    )
+    state = turn_state(questions_count=10)
+    state["force_finalize"] = True
+
+    result = await workflow.run_turn(state)
+
+    assert discovery.calls == 0
+    assert synthesis.calls == 1
+    assert result.final_markdown == "# Escopo parcial"
+    assert result.awaiting_user_answer is False
+
+
+@pytest.mark.asyncio
 async def test_workflow_keeps_prior_references_and_adds_the_new_duckduckgo_result() -> None:
     """Evita perder fontes de pesquisas anteriores antes de gerar o escopo final."""
 
