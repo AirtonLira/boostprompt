@@ -1,6 +1,7 @@
 import pytest
 
 from boostprompt.graph.workflow import TurnWorkflow
+from boostprompt.llm import ModelProvider
 from boostprompt.models.schemas import DiscoveryMode, ResearchFinding, SessionSummary, TurnResult
 from boostprompt.services.discovery_workflow import DiscoveryWorkflowService
 
@@ -76,10 +77,52 @@ class FinalWorkflow:
         )
 
 
-def test_default_service_builds_all_pydantic_ai_agents(tmp_path) -> None:
+class PartialFinalWorkflow:
+    def __init__(self) -> None:
+        self.states = []
+
+    async def run_turn(self, state):
+        self.states.append(state)
+        return TurnResult(
+            display_message="Rascunho gerado.",
+            context=state["context"],
+            questions_count=state["questions_count"],
+            awaiting_user_answer=False,
+            final_markdown="# Rascunho",
+        )
+
+
+class CapturingSummaryAgent:
+    def __init__(self) -> None:
+        self.messages = []
+
+    async def summarize(self, *, previous, messages, context) -> SessionSummary:
+        self.messages = list(messages)
+        return SessionSummary(
+            goal=context["objetivo"],
+            decisions=["Entregar MVP"],
+            pending_topics=["Definir auditoria"],
+        )
+
+
+def test_default_service_builds_all_pydantic_ai_agents(tmp_path, monkeypatch) -> None:
     """Garante compatibilidade com a API PydanticAI instalada, sem chamar o modelo."""
 
-    service = DiscoveryWorkflowService.create_default(tmp_path / "sessions.db")
+    env_file = tmp_path / "litellm.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "LLM_MODEL=litellm/gpt-4.1-mini",
+                "LITELLM_BASE_URL=https://litellm.example.test/v1",
+                "API_KEY=token-for-test",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BOOSTPROMPT_ENV_FILE", str(env_file))
+    service = DiscoveryWorkflowService.create_default(
+        ModelProvider.LITELLM, tmp_path / "sessions.db"
+    )
     try:
         assert isinstance(service.workflow, TurnWorkflow)
     finally:
@@ -181,6 +224,80 @@ async def test_service_persists_the_final_markdown_for_a_later_resume(tmp_path) 
     assert service.resume_session(session.id).final_markdown == (
         "# Escopo da Solução\n\n## 1. Resumo executivo"
     )
+
+
+@pytest.mark.asyncio
+async def test_partial_prompt_requires_ten_answered_questions(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db", workflow=FakeWorkflow(), summary_agent=FakeSummaryAgent()
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+
+    with pytest.raises(ValueError, match="pelo menos 10"):
+        await service.generate_partial_prompt(session.id)
+
+
+@pytest.mark.asyncio
+async def test_partial_prompt_finalizes_without_appending_a_user_message(tmp_path) -> None:
+    workflow = PartialFinalWorkflow()
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db", workflow=workflow, summary_agent=FakeSummaryAgent()
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+
+    result = await service.generate_partial_prompt(session.id)
+
+    assert workflow.states[0]["force_finalize"] is True
+    assert result.final_markdown == "# Rascunho"
+    assert [item["content"] for item in service.repository.get_messages(session.id)] == [
+        "Demanda",
+        "Pergunta 10",
+    ]
+    assert service.resume_session(session.id).session.status == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_continuation_summarizes_completed_session_and_injects_only_summary(tmp_path) -> None:
+    workflow = FakeWorkflow()
+    summary_agent = CapturingSummaryAgent()
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db", workflow=workflow, summary_agent=summary_agent
+    )
+    source = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+    service.repository.append_turn(
+        source.id,
+        "Criar CRM para vendedores.",
+        "Pergunta 30",
+        {"objetivo": "CRM de vendas"},
+        30,
+    )
+    service.repository.save_generated_markdown(
+        source.id, {"objetivo": "CRM de vendas"}, 30, "completed", "# Escopo final"
+    )
+
+    continuation = await service.continue_completed_session(source.id)
+    await service.submit_answer(continuation.id, "A nova feature terá auditoria.")
+
+    assert [message.content for message in summary_agent.messages] == [
+        "Criar CRM para vendedores.",
+        "Pergunta 30",
+    ]
+    assert continuation.id != source.id
+    state = workflow.states[-1]
+    assert state["context"]["resumo_da_sessao"]["decisions"] == ["Entregar MVP"]
+    assert [message.content for message in state["messages"]] == ["A nova feature terá auditoria."]
+
+
+@pytest.mark.asyncio
+async def test_continuation_rejects_a_session_that_is_not_completed(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db", workflow=FakeWorkflow(), summary_agent=FakeSummaryAgent()
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+
+    with pytest.raises(ValueError, match="concluídas"):
+        await service.continue_completed_session(session.id)
 
 
 def test_research_query_ignores_common_words_that_only_contain_a_technical_substring(tmp_path) -> None:

@@ -289,6 +289,7 @@ class DuckDBStore:
         context: dict[str, Any],
         questions_count: int,
         final_markdown: str | None = None,
+        status: str | None = None,
     ) -> None:
         """Persiste exatamente a resposta e a saída do turno atual."""
 
@@ -302,10 +303,10 @@ class DuckDBStore:
             self.conn.execute(
                 """
                 UPDATE sessions
-                SET updated_at = ?, questions_count = ?
+                SET updated_at = ?, questions_count = ?, status = COALESCE(?, status)
                 WHERE id = ?
                 """,
-                [_utc_now(), questions_count, session_id],
+                [_utc_now(), questions_count, status, session_id],
             )
             if final_markdown is not None:
                 self._save_final_markdown(session_id, final_markdown)

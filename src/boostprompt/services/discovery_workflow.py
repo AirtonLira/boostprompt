@@ -29,6 +29,8 @@ from boostprompt.models.schemas import (
 )
 from boostprompt.research.duckduckgo_mcp import DuckDuckGoMCPResearchProvider
 
+MINIMUM_PARTIAL_PROMPT_QUESTIONS = 10
+
 
 class TurnRunner(Protocol):
     async def run_turn(self, state: TurnState) -> TurnResult: ...
@@ -143,6 +145,11 @@ class DiscoveryWorkflowService:
             result.context,
             result.questions_count,
             result.final_markdown,
+            status=(
+                "completed"
+                if result.final_markdown is not None and not result.awaiting_user_answer
+                else None
+            ),
         )
         if result.research_findings:
             self.repository.save_research_findings(
@@ -162,10 +169,55 @@ class DiscoveryWorkflowService:
     def delete_session(self, session_id: str) -> None:
         self.repository.delete_session(session_id)
 
+    async def generate_partial_prompt(self, session_id: str) -> TurnResult:
+        """Gera um rascunho do prompt sem encerrar a entrevista em andamento."""
+
+        resumed = self.repository.load_for_resume(session_id, self.recent_message_limit)
+        if resumed.session.mode is not DiscoveryMode.PROMPT_DESENVOLVIMENTO:
+            raise ValueError(
+                "A geração antecipada está disponível apenas para entrevistas de desenvolvimento."
+            )
+        if resumed.session.questions_count < MINIMUM_PARTIAL_PROMPT_QUESTIONS:
+            raise ValueError("Responda pelo menos 10 perguntas antes de gerar o prompt.")
+        state = self._build_turn_state(resumed, answer=None, force_finalize=True)
+        result = await self.workflow.run_turn(state)
+        if result.final_markdown is None:
+            raise RuntimeError("Não foi possível gerar o prompt parcial.")
+        self.repository.save_generated_markdown(
+            session_id,
+            result.context,
+            result.questions_count,
+            "in_progress",
+            result.final_markdown,
+        )
+        return result
+
+    async def continue_completed_session(self, session_id: str) -> Session:
+        """Cria uma entrevista nova a partir de um resumo compacto da sessão concluída."""
+
+        resumed = self.repository.load_for_resume(session_id, self.recent_message_limit)
+        if resumed.session.status != "completed":
+            raise ValueError("A continuação está disponível apenas para sessões concluídas.")
+        messages = [Message.model_validate(message) for message in self.repository.get_messages(session_id)]
+        if not messages:
+            raise ValueError("Não há conteúdo suficiente para resumir esta sessão concluída.")
+        summary = await self.summary_agent.summarize(
+            previous=resumed.summary,
+            messages=messages,
+            context=resumed.context,
+        )
+        return self.repository.create_continuation(resumed.session, summary)
+
     def close(self) -> None:
         self.repository.close()
 
-    def _build_turn_state(self, resumed: ResumedSession, answer: str) -> TurnState:
+    def _build_turn_state(
+        self,
+        resumed: ResumedSession,
+        answer: str | None,
+        *,
+        force_finalize: bool = False,
+    ) -> TurnState:
         context = resumed.context.copy()
         summary_context = resumed.summary.model_dump(
             mode="json", exclude={"summarized_through_sequence"}
@@ -178,16 +230,22 @@ class DiscoveryWorkflowService:
         ]
         context.setdefault("modo_saida", resumed.session.mode.value)
         context.setdefault("nome_projeto", resumed.session.nome)
-        context.setdefault("necessidade", answer)
+        if answer is not None:
+            context.setdefault("necessidade", answer)
         return {
             "mode": resumed.session.mode,
             "context": context,
-            "messages": [*resumed.messages, Message(role="user", content=answer)],
+            "messages": (
+                [*resumed.messages, Message(role="user", content=answer)]
+                if answer is not None
+                else list(resumed.messages)
+            ),
             "questions_count": resumed.session.questions_count,
             "decisions": resumed.decisions,
-            "last_user_message": answer,
-            "research_query": self._research_query(answer),
+            "last_user_message": answer or "",
+            "research_query": self._research_query(answer) if answer is not None else "",
             "research_references": research_references,
+            "force_finalize": force_finalize,
         }
 
     def _research_query(self, answer: str) -> str:
