@@ -34,6 +34,7 @@ env/
 *~
 .serena
 graphify-out
+.worktrees/
 
 # Environment
 .env
