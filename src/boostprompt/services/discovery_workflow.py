@@ -17,7 +17,7 @@ from boostprompt.agents.security import create_security_agent
 from boostprompt.agents.summary import SummaryAgent
 from boostprompt.agents.synthesis import create_synthesis_agent
 from boostprompt.graph.workflow import TurnState, TurnWorkflow, WorkflowAgents
-from boostprompt.llm import OpenAICompatibleSettings
+from boostprompt.llm import ModelProvider, OpenAICompatibleSettings
 from boostprompt.memory.duckdb_store import DuckDBStore, ResumedSession
 from boostprompt.models.schemas import (
     DiscoveryMode,
@@ -98,10 +98,11 @@ class DiscoveryWorkflowService:
     @classmethod
     def create_default(
         cls,
+        provider: ModelProvider,
         db_path: str | Path | None = None,
         model: Model | str | None = None,
     ) -> DiscoveryWorkflowService:
-        settings = OpenAICompatibleSettings.from_environment()
+        settings = OpenAICompatibleSettings.from_environment(provider)
         resolved_model = model or settings.build_model()
         agents = WorkflowAgents(
             discovery=create_discovery_agent(resolved_model),

@@ -23,6 +23,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from boostprompt.llm import ModelProvider
 from boostprompt.models.schemas import DiscoveryMode, Session, TurnResult
 from boostprompt.services.discovery_workflow import DiscoveryWorkflowService
 
@@ -39,6 +40,38 @@ class SessionService(Protocol):
     def list_sessions(self) -> list[dict[str, Any]]: ...
 
     def delete_session(self, session_id: str) -> None: ...
+
+
+class ProviderSelectionScreen(Screen[None]):
+    """Escolhe o provedor antes de inicializar os agentes da aplicação."""
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="provider-selection"):
+            yield Markdown("## Provedor de modelo")
+            yield Static("Escolha a configuração que será lida do arquivo `.env`.")
+            yield Button("Usar LiteLLM", id="select-litellm", variant="primary")
+            yield Button("Usar OpenAI", id="select-openai")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        providers = {
+            "select-litellm": ModelProvider.LITELLM,
+            "select-openai": ModelProvider.OPENAI,
+        }
+        provider = providers.get(event.button.id)
+        if provider is None:
+            return
+        try:
+            self.boostprompt_app.configure_provider(provider)
+        except ValueError as error:
+            self.notify(str(error), severity="error")
+            return
+        self.app.switch_screen(MainMenu())
+
+    @property
+    def boostprompt_app(self) -> BoostPromptApp:
+        return self.app  # type: ignore[return-value]
 
 
 class MainMenu(Screen[None]):
@@ -391,10 +424,10 @@ class BoostPromptApp(App[None]):
     """Aplicativo Textual com serviço injetável para testes funcionais."""
 
     CSS = """
-    #main-menu, #new-session-form, #resume-session-form, #sessions-list {
+    #main-menu, #new-session-form, #resume-session-form, #sessions-list, #provider-selection {
         align: center middle;
     }
-    #main-menu, #new-session-form, #resume-session-form { width: 72; }
+    #main-menu, #new-session-form, #resume-session-form, #provider-selection { width: 72; }
     #chat-container, #markdown-preview { height: 1fr; }
     #chat-messages { height: 1fr; border: solid $primary; padding: 1; }
     #chat-input-area, #chat-actions, #sessions-actions, #mode-actions { height: auto; padding: 1; }
@@ -408,10 +441,13 @@ class BoostPromptApp(App[None]):
 
     def __init__(self, service: SessionService | None = None, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        self.service = service or DiscoveryWorkflowService.create_default()
+        self.service = service
 
     def on_mount(self) -> None:
-        self.push_screen(MainMenu())
+        self.push_screen(MainMenu() if self.service is not None else ProviderSelectionScreen())
+
+    def configure_provider(self, provider: ModelProvider) -> None:
+        self.service = DiscoveryWorkflowService.create_default(provider=provider)
 
     def on_unmount(self) -> None:
         close = getattr(self.service, "close", None)

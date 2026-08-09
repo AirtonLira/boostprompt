@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,6 +14,13 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_DATABASE_PATH = "data/boostprompt.db"
+
+
+class ModelProvider(StrEnum):
+    """Provedores disponíveis na seleção inicial da TUI."""
+
+    LITELLM = "litellm"
+    OPENAI = "openai"
 
 
 def _first_configured(*names: str) -> str | None:
@@ -40,26 +48,33 @@ class OpenAICompatibleSettings:
     database_path: Path
 
     @classmethod
-    def from_environment(cls) -> OpenAICompatibleSettings:
+    def from_environment(cls, provider: ModelProvider) -> OpenAICompatibleSettings:
         load_cli_environment()
+        if provider is ModelProvider.LITELLM:
+            model_name = _first_configured("LLM_MODEL")
+            base_url = _first_configured("LLM_BASE_URL", "LITELLM_BASE_URL")
+            api_key = _first_configured("LLM_API_KEY", "LITELLM_API_KEY", "API_KEY")
+            if not model_name:
+                raise ValueError("Configure LLM_MODEL para usar LiteLLM.")
+            if not base_url:
+                raise ValueError("Configure LLM_BASE_URL ou LITELLM_BASE_URL para usar LiteLLM.")
+            if not api_key:
+                raise ValueError("Configure LLM_API_KEY, LITELLM_API_KEY ou API_KEY para usar LiteLLM.")
+        else:
+            model_name = _first_configured("OPENAI_MODEL", "LLM_MODEL") or DEFAULT_MODEL
+            base_url = _first_configured("OPENAI_BASE_URL")
+            api_key = _first_configured("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("Configure OPENAI_API_KEY para usar OpenAI.")
         return cls(
-            model_name=_first_configured("LLM_MODEL") or DEFAULT_MODEL,
-            base_url=_first_configured(
-                "LLM_BASE_URL", "LITELLM_BASE_URL", "OPENAI_BASE_URL"
-            ),
-            api_key=_first_configured(
-                "LLM_API_KEY", "LITELLM_API_KEY", "API_KEY", "OPENAI_API_KEY"
-            ),
+            model_name=model_name,
+            base_url=base_url,
+            api_key=api_key,
             database_path=Path(
                 _first_configured("DUCKDB_PATH") or DEFAULT_DATABASE_PATH
             ),
         )
 
     def build_model(self) -> Model:
-        if self.base_url is None and self.api_key is None:
-            raise ValueError(
-                "Configure LLM_API_KEY (ou OPENAI_API_KEY) para OpenAI, ou "
-                "LLM_BASE_URL/LITELLM_BASE_URL para um endpoint compatível."
-            )
         provider = OpenAIProvider(base_url=self.base_url, api_key=self.api_key)
         return OpenAIChatModel(self.model_name, provider=provider)

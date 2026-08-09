@@ -25,7 +25,7 @@ class StaticRunAgent:
 
 @pytest.mark.asyncio
 async def test_architecture_agent_merges_decisions_context_and_recommendations() -> None:
-    agent = ArchitectureAgent()
+    agent = ArchitectureAgent(model="test")
     agent.agent = StaticRunAgent(
         ArchitectureResponse(
             decisions=[
@@ -61,7 +61,7 @@ async def test_architecture_agent_merges_decisions_context_and_recommendations()
 async def test_security_agent_keeps_context_updates_even_without_new_requirements() -> None:
     """Evita descartar fatos de segurança quando o agente não cria um requisito formal."""
 
-    agent = SecurityAgent()
+    agent = SecurityAgent(model="test")
     agent.agent = StaticRunAgent(
         SecurityResponse(
             requirements=[],
@@ -88,7 +88,7 @@ async def test_security_agent_keeps_context_updates_even_without_new_requirement
 async def test_synthesis_formats_pydantic_messages_received_from_the_session_service() -> None:
     """Evita erro ao finalizar sessões cujo histórico vem do repositório tipado."""
 
-    agent = SynthesisAgent()
+    agent = SynthesisAgent(model="test")
     runner = StaticRunAgent(
         SynthesisResponse(markdown_document="# Escopo", summary="Escopo consolidado.")
     )
@@ -103,7 +103,7 @@ async def test_synthesis_formats_pydantic_messages_received_from_the_session_ser
 
 @pytest.mark.asyncio
 async def test_delivery_agent_persists_the_operational_plan_in_context() -> None:
-    agent = DeliveryAgent()
+    agent = DeliveryAgent(model="test")
     agent.agent = StaticRunAgent(
         DeliveryResponse(
             plan=DeliveryPlan(
@@ -136,7 +136,7 @@ async def test_delivery_agent_persists_the_operational_plan_in_context() -> None
 
 @pytest.mark.asyncio
 async def test_synthesis_returns_the_final_markdown_and_a_download_message() -> None:
-    agent = SynthesisAgent()
+    agent = SynthesisAgent(model="test")
     agent.agent = StaticRunAgent(
         SynthesisResponse(
             markdown_document="# Escopo da Solução\n\n## 1. Resumo executivo",

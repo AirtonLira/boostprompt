@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
 import pytest
-from textual.widgets import Input, ListView, LoadingIndicator
+from textual.widgets import Button, Input, ListView, LoadingIndicator
 
-from boostprompt.cli.tui_main import BoostPromptApp, ChatScreen, MarkdownPreviewScreen
+from boostprompt.cli.tui_main import BoostPromptApp, ChatScreen, MainMenu, MarkdownPreviewScreen
 from boostprompt.memory.duckdb_store import ResumedSession
 from boostprompt.models.schemas import DiscoveryMode, Session, SessionSummary, TurnResult
 
@@ -81,6 +81,47 @@ class ResumingFinalService(FakeService):
             decisions=[],
             final_markdown="# Escopo da Solução\n\n## 1. Resumo executivo",
         )
+
+
+@pytest.mark.asyncio
+async def test_provider_selection_uses_litellm_environment_before_opening_the_menu(tmp_path, monkeypatch) -> None:
+    env_file = tmp_path / "litellm.env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "LLM_MODEL=litellm/gpt-4.1-mini",
+                "LITELLM_BASE_URL=https://litellm.example.test/v1",
+                "API_KEY=token-for-test",
+                f"DUCKDB_PATH={tmp_path / 'sessions.db'}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BOOSTPROMPT_ENV_FILE", str(env_file))
+    app = BoostPromptApp()
+
+    async with app.run_test() as pilot:
+        assert app.screen.query_one("#select-litellm", Button).disabled is False
+        await pilot.click("#select-litellm")
+        await pilot.pause()
+
+        assert isinstance(app.screen, MainMenu)
+
+
+@pytest.mark.asyncio
+async def test_provider_selection_keeps_the_selection_screen_when_litellm_is_not_configured(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("BOOSTPROMPT_ENV_FILE", raising=False)
+    for name in ("LLM_MODEL", "LLM_BASE_URL", "LITELLM_BASE_URL", "LLM_API_KEY", "LITELLM_API_KEY", "API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    app = BoostPromptApp()
+
+    async with app.run_test() as pilot:
+        await pilot.click("#select-litellm")
+        await pilot.pause()
+
+        assert app.screen.query_one("#select-openai", Button).disabled is False
+        assert not isinstance(app.screen, MainMenu)
 
 
 @pytest.mark.asyncio

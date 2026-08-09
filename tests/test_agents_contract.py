@@ -98,7 +98,7 @@ async def test_synthesis_includes_persisted_research_references_in_its_input() -
                 },
             )()
 
-    synthesis = SynthesisAgent()
+    synthesis = SynthesisAgent(model="test")
     runner = CapturingAgent()
     synthesis.agent = runner
 
@@ -136,7 +136,7 @@ async def test_discovery_compatibility_execution_adds_exactly_one_question_to_st
                 },
             )()
 
-    discovery = DiscoveryAgent()
+    discovery = DiscoveryAgent(model="test")
     discovery.agent = StaticAgent()
 
     result = await discovery.execute(
@@ -169,7 +169,7 @@ async def test_discovery_compatibility_execution_marks_the_interview_complete() 
                 },
             )()
 
-    discovery = DiscoveryAgent()
+    discovery = DiscoveryAgent(model="test")
     discovery.agent = StaticAgent()
 
     result = await discovery.execute({"messages": [], "questions_count": 30})
