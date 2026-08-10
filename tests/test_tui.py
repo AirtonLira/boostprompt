@@ -3,9 +3,28 @@ from datetime import UTC, datetime
 import pytest
 from textual.widgets import Button, Input, ListView, LoadingIndicator
 
-from boostprompt.cli.tui_main import BoostPromptApp, ChatScreen, MainMenu, MarkdownPreviewScreen
+from boostprompt.cli.tui_main import (
+    BoostPromptApp,
+    ChatScreen,
+    MainMenu,
+    MarkdownPreviewScreen,
+)
 from boostprompt.memory.duckdb_store import ResumedSession
-from boostprompt.models.schemas import DiscoveryMode, Session, SessionSummary, TurnResult
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    PromptQualityEvaluation,
+    Session,
+    SessionSummary,
+    TurnResult,
+)
+
+QUALITY_EVALUATION = PromptQualityEvaluation(
+    coverage=42,
+    decision_clarity=58,
+    prompt_readiness=51,
+    questions_count=1,
+    status_text="Contexto inicial registrado.",
+)
 
 
 class FakeService:
@@ -76,6 +95,12 @@ class TenAnswerService(FakeService):
         )
 
 
+class QualityReturningService(FakeService):
+    async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
+        result = await super().submit_answer(session_id, answer)
+        return result.model_copy(update={"quality_evaluation": QUALITY_EVALUATION})
+
+
 class ResumingFinalService(FakeService):
     def __init__(self) -> None:
         super().__init__()
@@ -112,6 +137,7 @@ class ResumingFinalService(FakeService):
                 summary=SessionSummary(goal="Portal concluído", decisions=["Entregar MVP"]),
                 decisions=[],
                 final_markdown=None,
+                quality_evaluation=None,
             )
         assert session_id == self.session.id
         return ResumedSession(
@@ -121,12 +147,27 @@ class ResumingFinalService(FakeService):
             summary=SessionSummary(goal="Portal concluído"),
             decisions=[],
             final_markdown="# Escopo da Solução\n\n## 1. Resumo executivo",
+            quality_evaluation=None,
         )
 
     async def continue_completed_session(self, session_id: str) -> Session:
         assert session_id == self.session.id
         self.continued_from = session_id
         return self.continuation
+
+
+class ResumingQualityService(ResumingFinalService):
+    def resume_session(self, session_id: str) -> ResumedSession:
+        resumed = super().resume_session(session_id)
+        return ResumedSession(
+            session=resumed.session,
+            messages=resumed.messages,
+            context=resumed.context,
+            summary=resumed.summary,
+            decisions=resumed.decisions,
+            final_markdown=resumed.final_markdown,
+            quality_evaluation=QUALITY_EVALUATION,
+        )
 
 
 @pytest.mark.asyncio
@@ -211,6 +252,36 @@ async def test_chat_submission_delegates_one_turn_to_the_session_service() -> No
         await pilot.pause()
 
         assert service.submitted == [("session-1", "Preciso de uma API de cobrança.")]
+
+
+@pytest.mark.asyncio
+async def test_chat_updates_the_fixed_quality_panel_after_a_turn() -> None:
+    app = BoostPromptApp(service=QualityReturningService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        app.screen.query_one("#chat-input", Input).value = "Criar API."
+        await pilot.click("#send")
+        await pilot.pause()
+
+        panel = app.screen.query_one("#prompt-quality-panel")
+        assert "Cobertura do contexto" in str(panel.render())
+        assert "42/100" in str(panel.render())
+
+
+@pytest.mark.asyncio
+async def test_resumed_chat_renders_the_persisted_quality_panel() -> None:
+    app = BoostPromptApp(service=ResumingQualityService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#resume_session")
+        app.screen.query_one("#session-code-input", Input).value = "BP-2026-050"
+        await pilot.click("#resume")
+        await pilot.pause()
+
+        assert "Prontidão do prompt" in str(app.screen.query_one("#prompt-quality-panel").render())
 
 
 @pytest.mark.asyncio
