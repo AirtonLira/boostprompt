@@ -1,5 +1,5 @@
 from boostprompt.memory.duckdb_store import DuckDBStore
-from boostprompt.models.schemas import DiscoveryMode, SessionSummary
+from boostprompt.models.schemas import DiscoveryMode, PromptQualityEvaluation, SessionSummary
 
 
 def test_append_turn_is_durable_and_never_duplicates_prior_messages(tmp_path) -> None:
@@ -58,11 +58,21 @@ def test_partial_markdown_is_persisted_without_new_messages_and_marks_in_progres
     store.append_turn(session.id, "Criar portal", "Pergunta 10", {"objetivo": "Portal"}, 10)
     before = store.get_messages(session.id)
 
-    store.save_generated_markdown(session.id, {"objetivo": "Portal"}, 10, "in_progress", "# Rascunho")
+    quality = PromptQualityEvaluation(prompt_readiness=73, questions_count=10)
+
+    store.save_generated_markdown(
+        session.id,
+        {"objetivo": "Portal"},
+        10,
+        "in_progress",
+        "# Rascunho",
+        quality_evaluation=quality,
+    )
 
     assert store.get_messages(session.id) == before
     assert store.get_final_markdown(session.id) == "# Rascunho"
     assert store.get_session(session.id)["status"] == "in_progress"
+    assert store.get_latest_quality_evaluation(session.id).prompt_readiness == 73
 
 
 def test_continuation_has_new_identity_and_only_seeded_summary(tmp_path) -> None:
@@ -104,3 +114,50 @@ def test_delete_session_removes_the_session_and_its_related_data(tmp_path) -> No
 
     assert store.get_session(session.id) is None
     assert store.get_messages(session.id) == []
+
+
+def test_quality_snapshot_is_persisted_with_a_turn_and_restored_on_resume(tmp_path) -> None:
+    store = DuckDBStore(tmp_path / "sessions.db")
+    session = store.create_session("Portal")
+    quality = PromptQualityEvaluation(
+        coverage=44,
+        decision_clarity=36,
+        prompt_readiness=39,
+        questions_count=1,
+    )
+
+    store.append_turn(
+        session.id,
+        "Criar portal",
+        "Pergunta 1",
+        {"objetivo": "Portal"},
+        1,
+        quality_evaluation=quality,
+    )
+
+    restored = store.load_for_resume(session.id).quality_evaluation
+
+    assert restored is not None
+    assert (restored.coverage, restored.decision_clarity, restored.prompt_readiness) == (44, 36, 39)
+
+
+def test_list_sessions_exposes_the_latest_readiness_without_breaking_legacy_sessions(tmp_path) -> None:
+    store = DuckDBStore(tmp_path / "sessions.db")
+    legacy = store.create_session("Legada")
+    rated = store.create_session("Avaliada")
+    store.save_quality_evaluation(rated.id, PromptQualityEvaluation(prompt_readiness=61, questions_count=12))
+
+    sessions = {item["nome"]: item for item in store.list_sessions()}
+
+    assert sessions[legacy.nome]["prompt_readiness"] is None
+    assert sessions[rated.nome]["prompt_readiness"] == 61
+
+
+def test_delete_session_removes_quality_snapshots(tmp_path) -> None:
+    store = DuckDBStore(tmp_path / "sessions.db")
+    session = store.create_session("Portal")
+    store.save_quality_evaluation(session.id, PromptQualityEvaluation(prompt_readiness=20))
+
+    store.delete_session(session.id)
+
+    assert store.get_latest_quality_evaluation(session.id) is None

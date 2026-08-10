@@ -13,7 +13,13 @@ from typing import Any
 
 import duckdb
 
-from boostprompt.models.schemas import DiscoveryMode, Message, Session, SessionSummary
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    Message,
+    PromptQualityEvaluation,
+    Session,
+    SessionSummary,
+)
 
 
 def _utc_now() -> datetime:
@@ -32,6 +38,7 @@ class ResumedSession:
     summary: SessionSummary
     decisions: list[dict[str, Any]]
     final_markdown: str | None
+    quality_evaluation: PromptQualityEvaluation | None
 
 
 class DuckDBStore:
@@ -67,6 +74,21 @@ class DuckDBStore:
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_quality_evaluations (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                applicable BOOLEAN NOT NULL,
+                coverage INTEGER,
+                decision_clarity INTEGER,
+                prompt_readiness INTEGER,
+                questions_count INTEGER NOT NULL,
+                status_text TEXT NOT NULL,
+                evaluated_at TIMESTAMP NOT NULL
             )
             """
         )
@@ -290,6 +312,7 @@ class DuckDBStore:
         questions_count: int,
         final_markdown: str | None = None,
         status: str | None = None,
+        quality_evaluation: PromptQualityEvaluation | None = None,
     ) -> None:
         """Persiste exatamente a resposta e a saída do turno atual."""
 
@@ -310,6 +333,8 @@ class DuckDBStore:
             )
             if final_markdown is not None:
                 self._save_final_markdown(session_id, final_markdown)
+            if quality_evaluation is not None:
+                self._save_quality_evaluation(session_id, quality_evaluation)
 
     def _append_message(self, session_id: str, role: str, content: str) -> None:
         sequence = self._next_message_sequence(session_id)
@@ -423,6 +448,41 @@ class DuckDBStore:
         with self.transaction():
             self._save_final_markdown(session_id, markdown)
 
+    def save_quality_evaluation(
+        self,
+        session_id: str,
+        evaluation: PromptQualityEvaluation,
+    ) -> None:
+        """Persiste um snapshot da qualidade atual do contexto da sessão."""
+
+        with self.transaction():
+            self._save_quality_evaluation(session_id, evaluation)
+
+    def _save_quality_evaluation(
+        self,
+        session_id: str,
+        evaluation: PromptQualityEvaluation,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO session_quality_evaluations (
+                id, session_id, applicable, coverage, decision_clarity,
+                prompt_readiness, questions_count, status_text, evaluated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()),
+                session_id,
+                evaluation.applicable,
+                evaluation.coverage,
+                evaluation.decision_clarity,
+                evaluation.prompt_readiness,
+                evaluation.questions_count,
+                evaluation.status_text,
+                evaluation.evaluated_at.replace(tzinfo=None),
+            ],
+        )
+
     def save_generated_markdown(
         self,
         session_id: str,
@@ -430,6 +490,7 @@ class DuckDBStore:
         questions_count: int,
         status: str,
         markdown: str,
+        quality_evaluation: PromptQualityEvaluation | None = None,
     ) -> None:
         """Persiste um documento gerado sem acrescentar uma mensagem ao histórico."""
 
@@ -439,6 +500,8 @@ class DuckDBStore:
             self._save_context_snapshot(session_id, context, questions_count)
             self._save_final_markdown(session_id, markdown)
             self.set_session_status(session_id, status)
+            if quality_evaluation is not None:
+                self._save_quality_evaluation(session_id, quality_evaluation)
 
     def _save_final_markdown(self, session_id: str, markdown: str) -> None:
         self.conn.execute("DELETE FROM final_documents WHERE session_id = ?", [session_id])
@@ -474,6 +537,30 @@ class DuckDBStore:
             [session_id],
         ).fetchone()
         return json.loads(row[0]) if row else None
+
+    def get_latest_quality_evaluation(self, session_id: str) -> PromptQualityEvaluation | None:
+        row = self.conn.execute(
+            """
+            SELECT applicable, coverage, decision_clarity, prompt_readiness,
+                   questions_count, status_text, evaluated_at
+            FROM session_quality_evaluations
+            WHERE session_id = ?
+            ORDER BY evaluated_at DESC, id DESC
+            LIMIT 1
+            """,
+            [session_id],
+        ).fetchone()
+        if row is None:
+            return None
+        return PromptQualityEvaluation(
+            applicable=row[0],
+            coverage=row[1],
+            decision_clarity=row[2],
+            prompt_readiness=row[3],
+            questions_count=row[4],
+            status_text=row[5],
+            evaluated_at=row[6],
+        )
 
     def save_summary(self, session_id: str, summary: SessionSummary) -> None:
         with self.transaction():
@@ -595,6 +682,7 @@ class DuckDBStore:
             summary=self.get_latest_summary(session_id) or SessionSummary(),
             decisions=self.get_decisions(session_id),
             final_markdown=self.get_final_markdown(session_id),
+            quality_evaluation=self.get_latest_quality_evaluation(session_id),
         )
 
     def save_decision(
@@ -645,9 +733,18 @@ class DuckDBStore:
     def list_sessions(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT id, codigo, nome, mode, created_at, updated_at, status, questions_count
-            FROM sessions
-            ORDER BY updated_at DESC, id DESC
+            SELECT s.id, s.codigo, s.nome, s.mode, s.created_at, s.updated_at,
+                   s.status, s.questions_count, quality.prompt_readiness,
+                   quality.applicable, quality.evaluated_at
+            FROM sessions AS s
+            LEFT JOIN LATERAL (
+                SELECT prompt_readiness, applicable, evaluated_at
+                FROM session_quality_evaluations
+                WHERE session_id = s.id
+                ORDER BY evaluated_at DESC, id DESC
+                LIMIT 1
+            ) AS quality ON TRUE
+            ORDER BY s.updated_at DESC, s.id DESC
             """
         ).fetchall()
         return [self._session_dict(row) for row in rows]
@@ -670,7 +767,7 @@ class DuckDBStore:
             mode = DiscoveryMode(mode_value).value
         except ValueError:
             mode = DiscoveryMode.PROMPT_DESENVOLVIMENTO.value
-        return {
+        session = {
             "id": row[0],
             "codigo": row[1],
             "nome": row[2],
@@ -680,6 +777,15 @@ class DuckDBStore:
             "status": row[6],
             "questions_count": row[7] or 0,
         }
+        if len(row) > 8:
+            session.update(
+                {
+                    "prompt_readiness": row[8],
+                    "quality_applicable": row[9],
+                    "quality_evaluated_at": row[10],
+                }
+            )
+        return session
 
     def delete_session(self, session_id: str) -> None:
         with self.transaction():
@@ -688,6 +794,7 @@ class DuckDBStore:
                 "final_documents",
                 "session_summaries",
                 "decisions",
+                "session_quality_evaluations",
                 "context_snapshots",
                 "messages",
             ):
