@@ -28,8 +28,8 @@ from boostprompt.models.schemas import (
     SessionSummary,
     TurnResult,
 )
-from boostprompt.services.prompt_quality import PromptQualityEvaluator
 from boostprompt.research.duckduckgo_mcp import DuckDuckGoMCPResearchProvider
+from boostprompt.services.prompt_quality import PromptQualityEvaluator
 
 MINIMUM_PARTIAL_PROMPT_QUESTIONS = 10
 
@@ -192,7 +192,8 @@ class DiscoveryWorkflowService:
             raise ValueError("Responda pelo menos 10 perguntas antes de gerar o prompt.")
         state = self._build_turn_state(resumed, answer=None, force_finalize=True)
         result = await self.workflow.run_turn(state)
-        if result.final_markdown is None:
+        final_markdown = result.final_markdown
+        if final_markdown is None:
             raise RuntimeError("Não foi possível gerar o prompt parcial.")
         evaluation = self._evaluate_quality(
             resumed,
@@ -205,7 +206,7 @@ class DiscoveryWorkflowService:
             result.context,
             result.questions_count,
             "in_progress",
-            result.final_markdown,
+            final_markdown,
             quality_evaluation=evaluation,
         )
         return result
