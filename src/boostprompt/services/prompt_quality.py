@@ -12,15 +12,26 @@ class PromptQualityEvaluator:
     """Calcula cobertura, clareza das decisões e prontidão do prompt."""
 
     _COVERAGE_GROUPS = (
-        ("necessidade", "problema"),
-        ("objetivo",),
-        ("tipo_solucao",),
+        ("necessidade", "problema", "objetivo"),
         ("usuarios", "stakeholders"),
-        ("requisitos_funcionais", "requisitos_nao_funcionais"),
-        ("integracoes",),
-        ("arquitetura",),
+        ("tipo_solucao", "requisitos_funcionais"),
+        ("requisitos_nao_funcionais",),
+        ("dados", "integracoes"),
+        ("arquitetura", "plataformas", "dominio"),
         ("seguranca",),
-        ("operacao", "entrega"),
+        ("entrega", "operacao"),
+        ("restricoes", "premissas", "riscos"),
+    )
+    _EVIDENCE_FIELDS = (
+        "objetivo",
+        "problema",
+        "tipo_solucao",
+        "usuarios",
+        "stakeholders",
+        "requisitos_funcionais",
+        "requisitos_nao_funcionais",
+        "integracoes",
+        "arquitetura",
     )
 
     @staticmethod
@@ -32,6 +43,12 @@ class PromptQualityEvaluator:
         if isinstance(value, (list, tuple, set, dict)):
             return bool(value)
         return True
+
+    @classmethod
+    def _item_count(cls, value: Any) -> int:
+        if isinstance(value, (list, tuple, set)):
+            return sum(cls._present(item) for item in value)
+        return int(cls._present(value))
 
     def evaluate(
         self,
@@ -57,26 +74,12 @@ class PromptQualityEvaluator:
         )
         coverage = round(covered_blocks / len(self._COVERAGE_GROUPS) * 100)
 
-        evidence_groups = (
-            ("objetivo",),
-            ("problema",),
-            ("tipo_solucao",),
-            ("usuarios", "stakeholders"),
-            ("requisitos_funcionais", "requisitos_nao_funcionais"),
-            ("integracoes",),
-            ("arquitetura",),
-        )
         evidence = min(
             10,
-            sum(
-                any(self._present(context.get(field)) for field in group)
-                for group in evidence_groups
-            )
-            + sum(self._present(decision.get("decision")) for decision in decisions),
+            sum(self._item_count(context.get(field)) for field in self._EVIDENCE_FIELDS)
+            + sum(self._item_count(decision.get("decision")) for decision in decisions),
         )
-        uncertainty = sum(
-            self._present(context.get(field)) for field in ("pendencias", "riscos")
-        )
+        uncertainty = sum(self._item_count(context.get(field)) for field in ("pendencias", "riscos"))
         decision_clarity = max(0, min(100, round(100 * evidence / (10 + 2 * uncertainty))))
         prompt_readiness = round(
             0.50 * coverage

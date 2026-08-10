@@ -317,6 +317,30 @@ async def test_chat_updates_the_fixed_quality_panel_after_a_turn() -> None:
 
 
 @pytest.mark.asyncio
+async def test_narrow_chat_reflows_quality_panel_without_compressing_metrics() -> None:
+    app = BoostPromptApp(service=QualityReturningService())
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        await pilot.pause()
+
+        layout = app.screen.query_one("#chat-layout")
+        panel = app.screen.query_one("#prompt-quality-panel")
+        input_area = app.screen.query_one("#chat-input-area")
+        actions = app.screen.query_one("#chat-actions")
+
+        assert layout.has_class("narrow")
+        assert layout.max_scroll_y > 0
+        layout.scroll_end(animate=False)
+        await pilot.pause()
+        assert panel.content_region.height >= 9
+        assert input_area.region.y + input_area.region.height <= panel.region.y
+        assert panel.region.y + panel.region.height <= actions.region.y
+
+
+@pytest.mark.asyncio
 async def test_resumed_chat_renders_the_persisted_quality_panel() -> None:
     app = BoostPromptApp(service=ResumingQualityService())
 

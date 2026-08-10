@@ -557,11 +557,11 @@ class BoostPromptApp(App[None]):
     #sessions-list-view { height: 1fr; border: solid $primary; }
     .user-message { background: $primary 20%; padding: 1; margin: 1; }
     .assistant-message { background: $secondary 20%; padding: 1; margin: 1; }
-    #chat-layout.narrow { layout: vertical; }
+    #chat-layout.narrow { layout: vertical; overflow-y: auto; }
+    #chat-layout.narrow #chat-container { min-height: 13; }
     #chat-layout.narrow #prompt-quality-panel {
         width: 1fr;
         height: auto;
-        max-height: 4;
         overflow-y: auto;
     }
     """
