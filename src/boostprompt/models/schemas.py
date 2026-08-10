@@ -129,3 +129,15 @@ class QuestionGuide(BaseModel):
 
     markdown: str = Field(min_length=1)
     questions: list[Question] = Field(min_length=30, max_length=50)
+
+
+class PromptQualityEvaluation(BaseModel):
+    """Avaliação determinística da qualidade do contexto para um prompt."""
+
+    applicable: bool = True
+    coverage: int | None = Field(default=None, ge=0, le=100)
+    decision_clarity: int | None = Field(default=None, ge=0, le=100)
+    prompt_readiness: int | None = Field(default=None, ge=0, le=100)
+    questions_count: int = Field(default=0, ge=0, le=50)
+    status_text: str = "Aguardando contexto inicial."
+    evaluated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
