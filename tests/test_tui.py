@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from textual.widgets import Button, Input, ListView, LoadingIndicator
+from textual.widgets import Button, Input, ListView, LoadingIndicator, Static
 
 from boostprompt.cli.tui_main import (
     BoostPromptApp,
@@ -70,6 +70,36 @@ class FakeService:
             awaiting_user_answer=False,
             final_markdown="# Rascunho do Prompt",
         )
+
+
+class SessionsWithQualityService(FakeService):
+    def list_sessions(self):
+        return [
+            {
+                "id": "session-development",
+                "codigo": "BP-2026-073",
+                "nome": "API de cobrança",
+                "mode": DiscoveryMode.PROMPT_DESENVOLVIMENTO.value,
+                "questions_count": 12,
+                "status": "in_progress",
+                "updated_at": datetime(2026, 8, 10, tzinfo=UTC),
+                "prompt_readiness": 73,
+                "quality_applicable": True,
+                "quality_evaluated_at": datetime(2026, 8, 10, tzinfo=UTC),
+            },
+            {
+                "id": "session-client",
+                "codigo": "BP-2026-074",
+                "nome": "Roteiro para cliente",
+                "mode": DiscoveryMode.ROTEIRO_PERGUNTAS_CLIENTE.value,
+                "questions_count": 30,
+                "status": "completed",
+                "updated_at": datetime(2026, 8, 10, tzinfo=UTC),
+                "prompt_readiness": None,
+                "quality_applicable": False,
+                "quality_evaluated_at": None,
+            },
+        ]
 
 
 class FinalMarkdownService(FakeService):
@@ -220,6 +250,21 @@ async def test_refreshing_session_list_keeps_loading_widget_mounted() -> None:
         await pilot.click("#refresh")
 
         assert app.screen.query_one("#loading", LoadingIndicator).display is False
+
+
+@pytest.mark.asyncio
+async def test_session_list_shows_update_timestamp_and_last_prompt_readiness() -> None:
+    service = SessionsWithQualityService()
+    app = BoostPromptApp(service=service)
+
+    async with app.run_test() as pilot:
+        await pilot.click("#list_sessions")
+        list_view = app.screen.query_one("#sessions-list-view", ListView)
+        rendered = [str(item.query_one(Static).render()) for item in list_view.children]
+
+        assert "Prontidão: 73/100" in rendered[0]
+        assert "Atualizada em: 10/08/2026 00:00" in rendered[0]
+        assert "Prontidão: não aplicável" in rendered[1]
 
 
 @pytest.mark.asyncio

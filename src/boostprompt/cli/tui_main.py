@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeAlias
 
@@ -218,17 +219,39 @@ class SessionsListScreen(Screen[None]):
             for session in sessions:
                 item_id = f"session-{session['id']}"
                 self._sessions_by_item_id[item_id] = session
-                mode = session.get("mode", DiscoveryMode.PROMPT_DESENVOLVIMENTO.value)
                 await list_view.append(
                     ListItem(
-                        Static(
-                            f"{session['codigo']} — {session['nome']}\n"
-                            f"{mode} | {session['questions_count']} perguntas | {session['status']}"
-                        ),
+                        Static(self._format_session_item(session)),
                         id=item_id,
                     )
                 )
         loading.display = False
+
+    @staticmethod
+    def _format_session_item(session: dict[str, Any]) -> str:
+        mode = session.get("mode", DiscoveryMode.PROMPT_DESENVOLVIMENTO.value)
+        updated_at = session.get("updated_at")
+        if isinstance(updated_at, datetime):
+            updated_text = updated_at.strftime("%d/%m/%Y %H:%M")
+        else:
+            updated_text = "não disponível"
+
+        if session.get("quality_applicable") is True and isinstance(
+            session.get("prompt_readiness"), int
+        ):
+            readiness = f"{session['prompt_readiness']}/100"
+        elif session.get("quality_applicable") is False:
+            readiness = "não aplicável"
+        else:
+            readiness = "sem avaliação"
+
+        return (
+            f"{session['codigo']} — {session['nome']}\n"
+            f"Modo: {mode} | Status: {session['status']} | "
+            f"{session['questions_count']} perguntas\n"
+            f"Atualizada em: {updated_text}\n"
+            f"Prontidão: {readiness}"
+        )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
