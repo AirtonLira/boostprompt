@@ -1,45 +1,92 @@
-# BoostPrompt
+<p align="center">
+  <img src="logo.png" alt="Logo do BoostPrompt" width="520">
+</p>
 
-O BoostPrompt pode ser usado de duas formas independentes:
+<h1 align="center">BoostPrompt</h1>
 
-1. **CLI/TUI local** — aplicação Textual com sessões persistidas no DuckDB, LangGraph, PydanticAI e geração de arquivo Markdown.
-2. **Skills para Claude Code e Codex** — discovery conduzido diretamente pelo seu harness, com a mesma estrutura de perguntas, modos de saída e política de pesquisa.
+<p align="center">
+  Discovery estruturado para transformar ideias e demandas em escopos prontos para execução.
+</p>
 
-Nos dois casos, há dois modos de saída:
+O **BoostPrompt** conduz o levantamento de requisitos com perguntas adaptativas,
+alternativas, trade-offs e recomendações. Ao final, ele organiza as decisões em um
+documento Markdown com escopo, critérios de aceite, plano de execução e prompt mestre
+para implementação.
 
-- `prompt_desenvolvimento`: faz de 30 a 50 perguntas, uma por resposta, e gera um escopo completo com prompt mestre de implementação.
-- `roteiro_perguntas_cliente`: recebe a demanda e gera diretamente um único Markdown com 30 a 50 perguntas para enviar ao cliente ou demandante.
+Você pode usar o projeto de duas formas independentes:
 
-## Escolha rápida
+- **CLI/TUI local**: uma aplicação interativa com sessões persistidas localmente em DuckDB;
+- **Skills para Claude Code e Codex**: discovery conduzido diretamente na conversa do seu harness.
 
-| Necessidade | Caminho recomendado |
+## O que o BoostPrompt oferece
+
+- Entrevistas de discovery com **30 a 50 perguntas**, adaptadas às respostas anteriores;
+- dois modos de saída: `prompt_desenvolvimento` e `roteiro_perguntas_cliente`;
+- retomada de sessões e continuação de entrevistas concluídas;
+- geração e persistência de escopos em Markdown;
+- resumo estruturado para manter o contexto compacto em sessões longas;
+- pesquisa técnica opcional via MCP DuckDuckGo;
+- integração com endpoints compatíveis com a API da OpenAI, LiteLLM e OpenAI;
+- skills instaláveis para Claude Code e Codex.
+
+## Escolha o caminho certo
+
+| Se você quer... | Use... |
 | --- | --- |
-| Quero sessões locais, retomada, resumo e arquivo `.md` persistido | CLI/TUI local |
-| Quero fazer o discovery dentro de uma conversa do Claude Code | Skill Claude Code |
-| Quero fazer o discovery dentro de uma conversa do Codex | Skill Codex |
+| Sessões locais, retomada, resumo e arquivo `.md` persistido | [CLI/TUI local](#1-clitui-local) |
+| Discovery dentro de uma conversa do Claude Code | [Skill para Claude Code](#usando-no-claude-code) |
+| Discovery dentro de uma conversa do Codex | [Skill para Codex](#usando-no-codex) |
+| Apenas uma lista de perguntas para enviar a um cliente | Modo `roteiro_perguntas_cliente` |
 
----
+## Sumário
 
-## 1. Uso pela CLI/TUI local
+- [CLI/TUI local](#1-clitui-local)
+  - [Pré-requisitos](#pré-requisitos)
+  - [Instalação](#instalação)
+  - [Configuração do modelo](#configuração-do-modelo)
+  - [Iniciar a aplicação](#iniciar-a-aplicação)
+  - [Fluxo de uma sessão](#fluxo-de-uma-sessão)
+  - [Persistência e retomada](#persistência-e-retomada)
+  - [Pesquisa técnica](#pesquisa-técnica)
+- [Skills para Claude Code e Codex](#2-skills-para-claude-code-e-codex)
+  - [Instalar as skills](#instalar-as-skills)
+  - [Usando no Claude Code](#usando-no-claude-code)
+  - [Usando no Codex](#usando-no-codex)
+  - [Comportamento esperado](#comportamento-esperado)
+- [Desenvolvimento](#desenvolvimento)
+- [Estrutura do projeto](#estrutura-do-projeto)
+- [Contribuição](#contribuição)
+- [Licença](#licença)
+
+## 1. CLI/TUI local
 
 ### Pré-requisitos
 
 - Python 3.11 ou superior;
 - [uv](https://docs.astral.sh/uv/);
-- um endpoint compatível com a API OpenAI e sua credencial, como LiteLLM,
+- um endpoint compatível com a API da OpenAI e sua credencial, como LiteLLM,
   OpenRouter, vLLM ou a própria OpenAI.
 
-### Instalação e configuração
+### Instalação
 
-Na raiz do repositório:
+Na raiz do repositório, instale as dependências:
 
 ```bash
 uv sync --extra dev
+```
+
+Copie o arquivo de exemplo e configure as credenciais:
+
+```bash
 cp .env.example .env
 ```
 
-A CLI carrega `.env` automaticamente sem sobrescrever variáveis já exportadas no shell.
-Para usar LiteLLM, configure por exemplo:
+O arquivo `.env` é carregado automaticamente, sem sobrescrever variáveis já
+exportadas no shell. Ele não deve ser versionado.
+
+### Configuração do modelo
+
+Para usar LiteLLM, configure:
 
 ```dotenv
 LLM_MODEL=gpt-4o-mini
@@ -47,12 +94,23 @@ LLM_BASE_URL=http://localhost:4000/v1
 LLM_API_KEY=sua-chave-litellm
 ```
 
-Também são aceitos os nomes legados `LITELLM_BASE_URL` e `API_KEY`. Para apontar
-para outro arquivo, exporte `BOOSTPROMPT_ENV_FILE=/caminho/para/arquivo.env` antes
-de executar a CLI. `DUCKDB_PATH` é opcional e define o banco local.
+Também são aceitos os nomes legados `LITELLM_BASE_URL` e `API_KEY`.
 
-Para usar OpenAI diretamente, configure `OPENAI_API_KEY` e, opcionalmente,
+Para usar a OpenAI diretamente, configure `OPENAI_API_KEY` e, opcionalmente,
 `OPENAI_MODEL` e `OPENAI_BASE_URL`.
+
+Variáveis úteis:
+
+| Variável | Finalidade |
+| --- | --- |
+| `LLM_MODEL` | Modelo usado pelo endpoint compatível com OpenAI |
+| `LLM_BASE_URL` | URL base do endpoint LiteLLM ou compatível |
+| `LLM_API_KEY` | Credencial do endpoint configurado |
+| `OPENAI_API_KEY` | Credencial para uso direto da OpenAI |
+| `OPENAI_MODEL` | Modelo usado pela OpenAI diretamente |
+| `OPENAI_BASE_URL` | URL alternativa para a API da OpenAI |
+| `BOOSTPROMPT_ENV_FILE` | Caminho de um arquivo `.env` alternativo |
+| `DUCKDB_PATH` | Caminho do banco local da aplicação |
 
 ### Iniciar a aplicação
 
@@ -60,24 +118,24 @@ Para usar OpenAI diretamente, configure `OPENAI_API_KEY` e, opcionalmente,
 uv run boostprompt
 ```
 
-Ao iniciar, escolha **Usar LiteLLM** ou **Usar OpenAI**. A aplicação valida as
-variáveis correspondentes no `.env` antes de abrir o menu, que permite criar uma
-sessão, listar sessões salvas ou retomar uma sessão pelo código `BP-AAAA-NNN`.
+Ao iniciar, escolha **Usar LiteLLM** ou **Usar OpenAI**. Depois, use o menu para
+criar uma sessão, listar sessões salvas ou retomar uma sessão pelo código
+`BP-AAAA-NNN`.
 
 ### Fluxo de uma sessão
 
-1. Escolha o provedor de modelo.
+1. Escolha o provedor do modelo.
 2. Escolha **Nova sessão**.
 3. Informe um nome identificável.
 4. Escolha o modo de saída.
 5. Descreva a demanda inicial.
-6. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação faz entre 30 e 50 perguntas, adaptadas às respostas anteriores.
-7. Depois de dez respostas, selecione **Gerar prompt agora** para salvar um rascunho sem encerrar a entrevista. Continue respondendo para refiná-lo.
-8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o arquivo.
+6. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação fará entre 30 e 50 perguntas adaptadas às respostas anteriores.
+7. Depois de dez respostas, selecione **Gerar prompt agora** para salvar um rascunho sem encerrar a entrevista.
+8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o escopo.
 
-Cada interação é persistida automaticamente. Não há botão de salvar.
+Cada interação é persistida automaticamente; não há botão de salvar.
 
-### Persistência, resumo e retomada
+### Persistência e retomada
 
 O banco padrão é `data/boostprompt.db`. Ele armazena:
 
@@ -88,12 +146,13 @@ O banco padrão é `data/boostprompt.db`. Ele armazena:
 - resumo estruturado do histórico antigo;
 - Markdown final gerado.
 
-Ao retomar uma sessão, a aplicação carrega as mensagens recentes e um resumo com objetivo, fatos confirmados, decisões, restrições, riscos e pendências. O Markdown final também fica disponível novamente para abrir ou salvar.
+Ao retomar uma sessão, a aplicação carrega as mensagens recentes e um resumo com
+objetivo, fatos confirmados, decisões, restrições, riscos e pendências.
 
-Ao abrir uma sessão concluída, a aplicação exibe esse resumo em bullets e oferece
-**Continuar em nova entrevista**. A continuação cria outra sessão com novo código
-e usa apenas o resumo estruturado da anterior, preservando o histórico original e
-mantendo o contexto do modelo compacto.
+Ao abrir uma sessão concluída, a aplicação exibe o resumo e oferece **Continuar em
+nova entrevista**. A continuação cria outra sessão com um novo código e usa apenas
+o resumo estruturado da anterior, preservando o histórico original e mantendo o
+contexto do modelo compacto.
 
 O arquivo exportado fica em:
 
@@ -101,7 +160,7 @@ O arquivo exportado fica em:
 output/<nome_da_sessão>_escopo.md
 ```
 
-### Pesquisa DuckDuckGo por MCP
+### Pesquisa técnica
 
 Para pesquisas técnicas, a CLI inicia sob demanda o MCP DuckDuckGo por meio de:
 
@@ -109,17 +168,23 @@ Para pesquisas técnicas, a CLI inicia sob demanda o MCP DuckDuckGo por meio de:
 uvx duckduckgo-mcp-server
 ```
 
-Não é necessário registrar esse MCP manualmente para usar a TUI; é necessário apenas que `uvx` esteja disponível no `PATH` e consiga obter o pacote. O cliente usa timeout e, se o servidor falhar, continua em modo degradado sem inventar fontes. Referências válidas, com URL, são persistidas e usadas na seção **Referências consultadas** do Markdown.
+Não é necessário registrar esse MCP manualmente para usar a TUI. É necessário
+apenas que `uvx` esteja disponível no `PATH` e consiga obter o pacote.
 
----
+O cliente usa timeout e, se o servidor falhar, continua em modo degradado sem
+inventar fontes. Referências válidas, com URL, são persistidas e usadas na seção
+**Referências consultadas** do Markdown.
 
-## 2. Uso somente pelas skills
+## 2. Skills para Claude Code e Codex
 
-As skills mantêm a mesma regra de discovery e os mesmos modos da CLI, mas funcionam inteiramente na conversa do harness. Elas não usam o banco DuckDB da TUI nem recuperam sessões locais: o histórico é o da própria conversa do Claude Code ou Codex.
+As skills mantêm a mesma regra de discovery e os mesmos modos da CLI, mas funcionam
+inteiramente na conversa do harness. Elas não usam o banco DuckDB da TUI nem
+recuperam sessões locais: o histórico é o da própria conversa do Claude Code ou Codex.
 
-### Instalação automática
+### Instalar as skills
 
-O instalador copia a skill correta e configura o MCP `ddg-search` para o harness escolhido:
+O instalador copia a skill correta e configura o MCP `ddg-search` para o harness
+escolhido:
 
 ```bash
 # Claude Code e Codex
@@ -132,7 +197,9 @@ uv run python install.py --harness claude
 uv run python install.py --harness codex
 ```
 
-O instalador exige que o executável do harness e o `uvx` estejam no `PATH`. Para instalar ou atualizar somente a skill, sem alterar a configuração MCP:
+O instalador exige que o executável do harness e o `uvx` estejam no `PATH`.
+
+Para instalar ou atualizar somente a skill, sem alterar a configuração MCP:
 
 ```bash
 uv run python install.py --harness both --skip-mcp
@@ -144,52 +211,56 @@ Para conferir as ações sem modificar nada:
 uv run python install.py --harness both --dry-run
 ```
 
-### Onde cada skill é instalada
+Onde cada skill é instalada:
 
 | Harness | Origem no repositório | Destino no usuário |
 | --- | --- | --- |
 | Claude Code | `.claude/skills/boostprompt/` | `~/.claude/skills/boostprompt/` |
 | Codex | `.codex/skills/boostprompt/` | `~/.agents/skills/boostprompt/` |
 
-O instalador preserva um MCP `ddg-search` que já exista. Quando precisa criá-lo, ele registra `uvx duckduckgo-mcp-server` como servidor MCP do harness.
+O instalador preserva um MCP `ddg-search` que já exista. Quando precisa criá-lo,
+ele registra `uvx duckduckgo-mcp-server` como servidor MCP do harness.
 
-### Usar no Claude Code
+### Usando no Claude Code
 
-Após instalar, abra o Claude Code no projeto ou em qualquer diretório e peça explicitamente, por exemplo:
+Após instalar, abra o Claude Code no projeto ou em qualquer diretório e solicite a
+skill com a demanda e o modo desejado:
 
 ```text
 Use a skill boostprompt no modo prompt_desenvolvimento.
 Quero definir o escopo de um portal de fornecedores.
 ```
 
-Para o fluxo inverso:
+Para gerar somente o roteiro de perguntas:
 
 ```text
 Use a skill boostprompt no modo roteiro_perguntas_cliente.
 Preciso de perguntas para entender uma integração de pagamentos.
 ```
 
-O Claude Code usa o modelo e as credenciais já configurados no próprio harness. Não é necessário definir `OPENAI_API_KEY` para a skill, a menos que a sua configuração do Claude Code explicitamente dependa dela.
+O Claude Code usa o modelo e as credenciais já configurados no próprio harness.
 
-### Usar no Codex
+### Usando no Codex
 
-Após instalar, inicie uma conversa no Codex e solicite a skill com a demanda e o modo:
+Após instalar, inicie uma conversa no Codex e solicite, por exemplo:
 
 ```text
 Use a skill boostprompt no modo prompt_desenvolvimento.
 Quero planejar uma plataforma de análise de dados.
 ```
 
-Ou, para receber somente o roteiro:
+Ou:
 
 ```text
 Use a skill boostprompt no modo roteiro_perguntas_cliente.
 Gere perguntas para levantar o escopo de um aplicativo de campo.
 ```
 
-O Codex também usa o modelo, autenticação e permissões configurados no próprio harness. Quando o MCP `ddg-search` estiver disponível, a skill o usa para decisões técnicas atuais; se não estiver, continua com recomendações em modo degradado.
+O Codex usa o modelo, a autenticação e as permissões configurados no próprio
+harness. Quando o MCP `ddg-search` estiver disponível, a skill o usa para decisões
+técnicas atuais; caso contrário, continua em modo degradado.
 
-### Comportamento esperado das skills
+### Comportamento esperado
 
 - A skill pede ou reconhece `modo_saida`.
 - Em `prompt_desenvolvimento`, não encerra antes de 30 respostas e encerra no máximo na pergunta 50.
@@ -197,9 +268,15 @@ O Codex também usa o modelo, autenticação e permissões configurados no próp
 - Em `roteiro_perguntas_cliente`, entrega diretamente um único Markdown com 30 a 50 perguntas, sem iniciar a entrevista interativa.
 - O documento de escopo inclui decisões, plano de execução, critérios de aceite, estratégia de validação, pendências, referências e prompt mestre.
 
----
+## Desenvolvimento
 
-## Desenvolvimento e validação
+Instale as dependências de desenvolvimento:
+
+```bash
+uv sync --extra dev
+```
+
+Execute a suíte de testes e as verificações de qualidade:
 
 ```bash
 uv run --extra dev pytest -q
@@ -208,4 +285,35 @@ uv run --extra dev ruff check src tests
 uv run --extra dev mypy src
 ```
 
-Os testes evitam chamadas externas: agentes e MCP são substituídos por adaptadores controlados, preservando a validação funcional de TUI, DuckDB, resumo, LangGraph, pesquisa degradada e exportação Markdown.
+Os testes evitam chamadas externas: agentes e MCP são substituídos por adaptadores
+controlados, preservando a validação funcional de TUI, DuckDB, resumo, LangGraph,
+pesquisa degradada e exportação Markdown.
+
+## Estrutura do projeto
+
+```text
+├── src/boostprompt/    # Aplicação CLI/TUI e componentes do discovery
+├── skills/             # Skills distribuídas para os harnesses
+├── tests/              # Testes automatizados
+├── examples/           # Exemplos de uso e artefatos de referência
+├── data/               # Banco local gerado durante a execução
+├── output/             # Escopos Markdown exportados
+├── install.py          # Instalador das skills e do MCP
+└── pyproject.toml      # Metadados, dependências e ferramentas do projeto
+```
+
+## Contribuição
+
+Contribuições são bem-vindas. Antes de abrir um pull request:
+
+1. crie uma branch para a alteração;
+2. atualize a documentação quando mudar o comportamento do projeto;
+3. execute os testes, o linter e o `mypy`;
+4. descreva no pull request o problema resolvido e como a alteração foi validada.
+
+Nunca inclua credenciais, arquivos `.env`, bancos DuckDB ou resultados gerados no
+commit.
+
+## Licença
+
+Este projeto está disponível sob a [licença MIT](LICENSE).
