@@ -25,6 +25,7 @@ Você pode usar o projeto de duas formas independentes:
 - retomada de sessões e continuação de entrevistas concluídas;
 - geração e persistência de escopos em Markdown;
 - resumo estruturado para manter o contexto compacto em sessões longas;
+- painel de qualidade com métricas locais de cobertura, clareza das decisões e prontidão do prompt;
 - pesquisa técnica opcional via MCP DuckDuckGo;
 - integração com endpoints compatíveis com a API da OpenAI, LiteLLM e OpenAI;
 - skills instaláveis para Claude Code e Codex.
@@ -134,6 +135,13 @@ criar uma sessão, listar sessões salvas ou retomar uma sessão pelo código
 8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o escopo.
 
 Cada interação é persistida automaticamente; não há botão de salvar.
+
+#### Métricas e histórico
+
+O painel de qualidade acompanha três métricas locais e determinísticas: cobertura do
+contexto, clareza das decisões e prontidão do prompt. O histórico de sessões mostra
+a última prontidão calculada e a data da atualização. O modo
+`roteiro_perguntas_cliente` não recebe nota, pois não executa uma entrevista.
 
 ### Persistência e retomada
 

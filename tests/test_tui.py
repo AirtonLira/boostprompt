@@ -1,11 +1,30 @@
 from datetime import UTC, datetime
 
 import pytest
-from textual.widgets import Button, Input, ListView, LoadingIndicator
+from textual.widgets import Button, Input, ListView, LoadingIndicator, Static
 
-from boostprompt.cli.tui_main import BoostPromptApp, ChatScreen, MainMenu, MarkdownPreviewScreen
+from boostprompt.cli.tui_main import (
+    BoostPromptApp,
+    ChatScreen,
+    MainMenu,
+    MarkdownPreviewScreen,
+)
 from boostprompt.memory.duckdb_store import ResumedSession
-from boostprompt.models.schemas import DiscoveryMode, Session, SessionSummary, TurnResult
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    PromptQualityEvaluation,
+    Session,
+    SessionSummary,
+    TurnResult,
+)
+
+QUALITY_EVALUATION = PromptQualityEvaluation(
+    coverage=42,
+    decision_clarity=58,
+    prompt_readiness=51,
+    questions_count=1,
+    status_text="Contexto inicial registrado.",
+)
 
 
 class FakeService:
@@ -53,6 +72,36 @@ class FakeService:
         )
 
 
+class SessionsWithQualityService(FakeService):
+    def list_sessions(self):
+        return [
+            {
+                "id": "session-development",
+                "codigo": "BP-2026-073",
+                "nome": "API de cobrança",
+                "mode": DiscoveryMode.PROMPT_DESENVOLVIMENTO.value,
+                "questions_count": 12,
+                "status": "in_progress",
+                "updated_at": datetime(2026, 8, 10, tzinfo=UTC),
+                "prompt_readiness": 73,
+                "quality_applicable": True,
+                "quality_evaluated_at": datetime(2026, 8, 10, tzinfo=UTC),
+            },
+            {
+                "id": "session-client",
+                "codigo": "BP-2026-074",
+                "nome": "Roteiro para cliente",
+                "mode": DiscoveryMode.ROTEIRO_PERGUNTAS_CLIENTE.value,
+                "questions_count": 30,
+                "status": "completed",
+                "updated_at": datetime(2026, 8, 10, tzinfo=UTC),
+                "prompt_readiness": None,
+                "quality_applicable": False,
+                "quality_evaluated_at": None,
+            },
+        ]
+
+
 class FinalMarkdownService(FakeService):
     async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
         self.submitted.append((session_id, answer))
@@ -74,6 +123,12 @@ class TenAnswerService(FakeService):
             questions_count=10,
             awaiting_user_answer=True,
         )
+
+
+class QualityReturningService(FakeService):
+    async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
+        result = await super().submit_answer(session_id, answer)
+        return result.model_copy(update={"quality_evaluation": QUALITY_EVALUATION})
 
 
 class ResumingFinalService(FakeService):
@@ -112,6 +167,7 @@ class ResumingFinalService(FakeService):
                 summary=SessionSummary(goal="Portal concluído", decisions=["Entregar MVP"]),
                 decisions=[],
                 final_markdown=None,
+                quality_evaluation=None,
             )
         assert session_id == self.session.id
         return ResumedSession(
@@ -121,12 +177,27 @@ class ResumingFinalService(FakeService):
             summary=SessionSummary(goal="Portal concluído"),
             decisions=[],
             final_markdown="# Escopo da Solução\n\n## 1. Resumo executivo",
+            quality_evaluation=None,
         )
 
     async def continue_completed_session(self, session_id: str) -> Session:
         assert session_id == self.session.id
         self.continued_from = session_id
         return self.continuation
+
+
+class ResumingQualityService(ResumingFinalService):
+    def resume_session(self, session_id: str) -> ResumedSession:
+        resumed = super().resume_session(session_id)
+        return ResumedSession(
+            session=resumed.session,
+            messages=resumed.messages,
+            context=resumed.context,
+            summary=resumed.summary,
+            decisions=resumed.decisions,
+            final_markdown=resumed.final_markdown,
+            quality_evaluation=QUALITY_EVALUATION,
+        )
 
 
 @pytest.mark.asyncio
@@ -182,6 +253,21 @@ async def test_refreshing_session_list_keeps_loading_widget_mounted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_session_list_shows_update_timestamp_and_last_prompt_readiness() -> None:
+    service = SessionsWithQualityService()
+    app = BoostPromptApp(service=service)
+
+    async with app.run_test() as pilot:
+        await pilot.click("#list_sessions")
+        list_view = app.screen.query_one("#sessions-list-view", ListView)
+        rendered = [str(item.query_one(Static).render()) for item in list_view.children]
+
+        assert "Prontidão: 73/100" in rendered[0]
+        assert "Atualizada em: 10/08/2026 00:00" in rendered[0]
+        assert "Prontidão: não aplicável" in rendered[1]
+
+
+@pytest.mark.asyncio
 async def test_new_session_collects_output_mode_before_opening_chat() -> None:
     service = TenAnswerService()
     app = BoostPromptApp(service=service)
@@ -211,6 +297,60 @@ async def test_chat_submission_delegates_one_turn_to_the_session_service() -> No
         await pilot.pause()
 
         assert service.submitted == [("session-1", "Preciso de uma API de cobrança.")]
+
+
+@pytest.mark.asyncio
+async def test_chat_updates_the_fixed_quality_panel_after_a_turn() -> None:
+    app = BoostPromptApp(service=QualityReturningService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        app.screen.query_one("#chat-input", Input).value = "Criar API."
+        await pilot.click("#send")
+        await pilot.pause()
+
+        panel = app.screen.query_one("#prompt-quality-panel")
+        assert "Cobertura do contexto" in str(panel.render())
+        assert "42/100" in str(panel.render())
+
+
+@pytest.mark.asyncio
+async def test_narrow_chat_reflows_quality_panel_without_compressing_metrics() -> None:
+    app = BoostPromptApp(service=QualityReturningService())
+
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        await pilot.pause()
+
+        layout = app.screen.query_one("#chat-layout")
+        panel = app.screen.query_one("#prompt-quality-panel")
+        input_area = app.screen.query_one("#chat-input-area")
+        actions = app.screen.query_one("#chat-actions")
+
+        assert layout.has_class("narrow")
+        assert layout.max_scroll_y > 0
+        layout.scroll_end(animate=False)
+        await pilot.pause()
+        assert panel.content_region.height >= 9
+        assert input_area.region.y + input_area.region.height <= panel.region.y
+        assert panel.region.y + panel.region.height <= actions.region.y
+
+
+@pytest.mark.asyncio
+async def test_resumed_chat_renders_the_persisted_quality_panel() -> None:
+    app = BoostPromptApp(service=ResumingQualityService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#resume_session")
+        app.screen.query_one("#session-code-input", Input).value = "BP-2026-050"
+        await pilot.click("#resume")
+        await pilot.pause()
+
+        assert "Prontidão do prompt" in str(app.screen.query_one("#prompt-quality-panel").render())
 
 
 @pytest.mark.asyncio

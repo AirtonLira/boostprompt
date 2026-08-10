@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeAlias
 
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -23,6 +25,7 @@ from textual.widgets import (
     TextArea,
 )
 
+from boostprompt.cli.prompt_quality_panel import PromptQualityPanel
 from boostprompt.llm import ModelProvider
 from boostprompt.models.schemas import DiscoveryMode, Session, SessionSummary, TurnResult
 from boostprompt.services.discovery_workflow import DiscoveryWorkflowService
@@ -216,17 +219,39 @@ class SessionsListScreen(Screen[None]):
             for session in sessions:
                 item_id = f"session-{session['id']}"
                 self._sessions_by_item_id[item_id] = session
-                mode = session.get("mode", DiscoveryMode.PROMPT_DESENVOLVIMENTO.value)
                 await list_view.append(
                     ListItem(
-                        Static(
-                            f"{session['codigo']} — {session['nome']}\n"
-                            f"{mode} | {session['questions_count']} perguntas | {session['status']}"
-                        ),
+                        Static(self._format_session_item(session)),
                         id=item_id,
                     )
                 )
         loading.display = False
+
+    @staticmethod
+    def _format_session_item(session: dict[str, Any]) -> str:
+        mode = session.get("mode", DiscoveryMode.PROMPT_DESENVOLVIMENTO.value)
+        updated_at = session.get("updated_at")
+        if isinstance(updated_at, datetime):
+            updated_text = updated_at.strftime("%d/%m/%Y %H:%M")
+        else:
+            updated_text = "não disponível"
+
+        if session.get("quality_applicable") is True and isinstance(
+            session.get("prompt_readiness"), int
+        ):
+            readiness = f"{session['prompt_readiness']}/100"
+        elif session.get("quality_applicable") is False:
+            readiness = "não aplicável"
+        else:
+            readiness = "sem avaliação"
+
+        return (
+            f"{session['codigo']} — {session['nome']}\n"
+            f"Modo: {mode} | Status: {session['status']} | "
+            f"{session['questions_count']} perguntas\n"
+            f"Atualizada em: {updated_text}\n"
+            f"Prontidão: {readiness}"
+        )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -315,13 +340,15 @@ class ChatScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical(id="chat-container"):
-            yield Markdown(f"## {self.session.nome}", id="chat-title")
-            with ScrollableContainer(id="chat-messages"):
-                pass
-            with Horizontal(id="chat-input-area"):
-                yield Input(placeholder="Digite sua resposta ou demanda...", id="chat-input")
-                yield Button("Enviar", id="send", variant="primary")
+        with Horizontal(id="chat-layout"):
+            with Vertical(id="chat-container"):
+                yield Markdown(f"## {self.session.nome}", id="chat-title")
+                with ScrollableContainer(id="chat-messages"):
+                    pass
+                with Horizontal(id="chat-input-area"):
+                    yield Input(placeholder="Digite sua resposta ou demanda...", id="chat-input")
+                    yield Button("Enviar", id="send", variant="primary")
+            yield PromptQualityPanel()
         with Horizontal(id="chat-actions"):
             yield Button("Gerar prompt agora", id="generate-partial", variant="success", disabled=True)
             yield Button("Gerar/abrir Markdown", id="generate", variant="success")
@@ -330,6 +357,7 @@ class ChatScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._update_chat_layout(self.size.width)
         if self.is_new:
             self._render_message(
                 "assistant",
@@ -339,6 +367,9 @@ class ChatScreen(Screen[None]):
             return
         resumed = self.boostprompt_app.service.resume_session(self.session.id)
         self.session = resumed.session
+        self.query_one("#prompt-quality-panel", PromptQualityPanel).update_evaluation(
+            resumed.quality_evaluation
+        )
         for message in resumed.messages:
             self._render_message(message.role, message.content)
         if resumed.summary.goal:
@@ -355,6 +386,12 @@ class ChatScreen(Screen[None]):
                 "O Markdown final recuperado está disponível para abrir ou salvar.",
             )
         self._update_action_availability()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._update_chat_layout(event.size.width)
+
+    def _update_chat_layout(self, width: int) -> None:
+        self.query_one("#chat-layout").set_class(width <= 100, "narrow")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
@@ -386,6 +423,9 @@ class ChatScreen(Screen[None]):
             self._render_message("user", message)
             self._render_message("assistant", result.display_message)
             self.final_markdown = result.final_markdown
+            self.query_one("#prompt-quality-panel", PromptQualityPanel).update_evaluation(
+                result.quality_evaluation
+            )
             self.session = self.session.model_copy(
                 update={
                     "questions_count": result.questions_count,
@@ -413,6 +453,9 @@ class ChatScreen(Screen[None]):
             self.notify(f"Não foi possível gerar o prompt: {error}", severity="error")
             return
         self.final_markdown = result.final_markdown
+        self.query_one("#prompt-quality-panel", PromptQualityPanel).update_evaluation(
+            result.quality_evaluation
+        )
         self.session = self.session.model_copy(
             update={"questions_count": result.questions_count, "status": "in_progress"}
         )
@@ -504,13 +547,23 @@ class BoostPromptApp(App[None]):
         align: center middle;
     }
     #main-menu, #new-session-form, #resume-session-form, #provider-selection { width: 72; }
+    #chat-layout { height: 1fr; }
     #chat-container, #markdown-preview { height: 1fr; }
+    #chat-container { width: 1fr; }
+    #prompt-quality-panel { width: 34; min-width: 28; border: solid $primary; padding: 1; }
     #chat-messages { height: 1fr; border: solid $primary; padding: 1; }
     #chat-input-area, #chat-actions, #sessions-actions, #mode-actions { height: auto; padding: 1; }
     #chat-input { width: 1fr; }
     #sessions-list-view { height: 1fr; border: solid $primary; }
     .user-message { background: $primary 20%; padding: 1; margin: 1; }
     .assistant-message { background: $secondary 20%; padding: 1; margin: 1; }
+    #chat-layout.narrow { layout: vertical; overflow-y: auto; }
+    #chat-layout.narrow #chat-container { min-height: 13; }
+    #chat-layout.narrow #prompt-quality-panel {
+        width: 1fr;
+        height: auto;
+        overflow-y: auto;
+    }
     """
 
     BINDINGS: ClassVar[list[BindingDefinition]] = [Binding("q", "quit", "Sair")]

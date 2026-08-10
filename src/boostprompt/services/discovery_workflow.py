@@ -22,12 +22,14 @@ from boostprompt.memory.duckdb_store import DuckDBStore, ResumedSession
 from boostprompt.models.schemas import (
     DiscoveryMode,
     Message,
+    PromptQualityEvaluation,
     ResearchFinding,
     Session,
     SessionSummary,
     TurnResult,
 )
 from boostprompt.research.duckduckgo_mcp import DuckDuckGoMCPResearchProvider
+from boostprompt.services.prompt_quality import PromptQualityEvaluator
 
 MINIMUM_PARTIAL_PROMPT_QUESTIONS = 10
 
@@ -72,12 +74,14 @@ class DiscoveryWorkflowService:
         *,
         recent_message_limit: int = 10,
         summary_threshold: int = 20,
+        quality_evaluator: PromptQualityEvaluator | None = None,
     ) -> None:
         self.repository = repository
         self.workflow = workflow
         self.summary_agent = summary_agent
         self.recent_message_limit = recent_message_limit
         self.summary_threshold = summary_threshold
+        self.quality_evaluator = quality_evaluator or PromptQualityEvaluator()
 
     @classmethod
     def with_database(
@@ -138,6 +142,12 @@ class DiscoveryWorkflowService:
         resumed = self.repository.load_for_resume(session_id, self.recent_message_limit)
         state = self._build_turn_state(resumed, clean_answer)
         result = await self.workflow.run_turn(state)
+        evaluation = self._evaluate_quality(
+            resumed,
+            {**resumed.context, **result.context},
+            result.questions_count,
+        )
+        result = result.model_copy(update={"quality_evaluation": evaluation})
         self.repository.append_turn(
             session_id,
             clean_answer,
@@ -150,6 +160,7 @@ class DiscoveryWorkflowService:
                 if result.final_markdown is not None and not result.awaiting_user_answer
                 else None
             ),
+            quality_evaluation=evaluation,
         )
         if result.research_findings:
             self.repository.save_research_findings(
@@ -181,14 +192,22 @@ class DiscoveryWorkflowService:
             raise ValueError("Responda pelo menos 10 perguntas antes de gerar o prompt.")
         state = self._build_turn_state(resumed, answer=None, force_finalize=True)
         result = await self.workflow.run_turn(state)
-        if result.final_markdown is None:
+        final_markdown = result.final_markdown
+        if final_markdown is None:
             raise RuntimeError("Não foi possível gerar o prompt parcial.")
+        evaluation = self._evaluate_quality(
+            resumed,
+            {**resumed.context, **result.context},
+            result.questions_count,
+        )
+        result = result.model_copy(update={"quality_evaluation": evaluation})
         self.repository.save_generated_markdown(
             session_id,
             result.context,
             result.questions_count,
             "in_progress",
-            result.final_markdown,
+            final_markdown,
+            quality_evaluation=evaluation,
         )
         return result
 
@@ -251,6 +270,22 @@ class DiscoveryWorkflowService:
     def _research_query(self, answer: str) -> str:
         terms_in_answer = set(re.findall(r"[\wÀ-ÿ]+", answer.casefold()))
         return answer if any(term in terms_in_answer for term in self.technical_terms) else ""
+
+    def _evaluate_quality(
+        self,
+        resumed: ResumedSession,
+        context: dict[str, Any],
+        questions_count: int,
+    ) -> PromptQualityEvaluation:
+        evaluation = self.quality_evaluator.evaluate(
+            mode=resumed.session.mode,
+            context=context,
+            decisions=resumed.decisions,
+            questions_count=questions_count,
+        )
+        return evaluation.model_copy(
+            update={"evaluated_at": evaluation.evaluated_at.replace(tzinfo=None)}
+        )
 
     async def _summarize_if_needed(self, session_id: str, context: dict[str, Any]) -> None:
         previous = self.repository.get_latest_summary(session_id)
