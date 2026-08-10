@@ -122,6 +122,7 @@ class TurnResult(BaseModel):
     final_markdown: str | None = None
     research_findings: list[ResearchFinding] = Field(default_factory=list)
     research_degraded: bool = False
+    quality_evaluation: PromptQualityEvaluation | None = None
 
 
 class QuestionGuide(BaseModel):

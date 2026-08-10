@@ -123,6 +123,29 @@ class PartialThenQuestionWorkflow:
         )
 
 
+async def build_service_with_ten_answers(tmp_path) -> tuple[DiscoveryWorkflowService, str]:
+    """Prepara uma sessão elegível para geração antecipada, sem usar modelo ou rede."""
+
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=PartialFinalWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+    return service, session.id
+
+
+def build_service_for_client_guide(tmp_path) -> DiscoveryWorkflowService:
+    """Monta um serviço isolado para o fluxo de roteiro direto ao cliente."""
+
+    return DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=FakeWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+
+
 def test_default_service_builds_all_pydantic_ai_agents(tmp_path, monkeypatch) -> None:
     """Garante compatibilidade com a API PydanticAI instalada, sem chamar o modelo."""
 
@@ -163,6 +186,43 @@ async def test_submit_answer_persists_answer_and_next_question(tmp_path) -> None
         "### Pergunta 1 — Objetivos\n\nQual resultado define sucesso?",
     ]
     assert workflow.states[0]["context"]["necessidade"] == "Preciso cobrar clientes."
+
+
+@pytest.mark.asyncio
+async def test_submit_answer_returns_and_persists_quality_evaluation(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=FakeWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+    session = await service.create_session("Pagamentos", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+
+    result = await service.submit_answer(session.id, "Preciso cobrar clientes.")
+
+    assert result.quality_evaluation is not None
+    assert service.resume_session(session.id).quality_evaluation == result.quality_evaluation
+
+
+@pytest.mark.asyncio
+async def test_partial_prompt_refreshes_quality_without_creating_messages(tmp_path) -> None:
+    service, session_id = await build_service_with_ten_answers(tmp_path)
+    before = service.repository.get_messages(session_id)
+
+    result = await service.generate_partial_prompt(session_id)
+
+    assert result.quality_evaluation is not None
+    assert service.repository.get_messages(session_id) == before
+
+
+@pytest.mark.asyncio
+async def test_client_guide_result_is_marked_not_applicable(tmp_path) -> None:
+    service = build_service_for_client_guide(tmp_path)
+    session = await service.create_session("Portal", DiscoveryMode.ROTEIRO_PERGUNTAS_CLIENTE)
+
+    result = await service.submit_answer(session.id, "Preciso de perguntas para o cliente.")
+
+    assert result.quality_evaluation is not None
+    assert result.quality_evaluation.applicable is False
 
 
 @pytest.mark.asyncio
