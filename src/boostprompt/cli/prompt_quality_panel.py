@@ -29,6 +29,25 @@ class PromptQualityPanel(Static):
                 prompt_readiness=0,
             )
 
+        validation_status = "Validação do documento: aguardando geração."
+        if evaluation.validation_report is not None:
+            report = evaluation.validation_report
+            if report.valid:
+                validation_status = "Documento validado."
+            else:
+                issue = next(
+                    iter(
+                        [
+                            *report.missing_sections,
+                            *report.missing_prompt_topics,
+                            *report.invalid_reference_urls,
+                            *report.warnings,
+                        ]
+                    ),
+                    "lacuna não detalhada",
+                )
+                validation_status = f"Documento requer revisão: {issue}"
+
         return "\n".join(
             (
                 "[bold]Qualidade do prompt[/bold]",
@@ -39,6 +58,7 @@ class PromptQualityPanel(Static):
                 "Mede o quanto as decisões e restrições estão definidas.",
                 f"[bold]Prontidão do prompt[/bold]: {evaluation.prompt_readiness or 0}/100",
                 "Indica se há base para gerar um prompt útil.",
+                validation_status,
                 f"[italic]{evaluation.status_text}[/italic]",
             )
         )

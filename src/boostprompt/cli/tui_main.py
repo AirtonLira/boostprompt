@@ -423,15 +423,24 @@ class ChatScreen(Screen[None]):
             self._render_message("user", message)
             self._render_message("assistant", result.display_message)
             self.final_markdown = result.final_markdown
+            evaluation = result.quality_evaluation
+            if evaluation is not None and evaluation.validation_report is None:
+                evaluation = evaluation.model_copy(update={"validation_report": result.validation_report})
             self.query_one("#prompt-quality-panel", PromptQualityPanel).update_evaluation(
-                result.quality_evaluation
+                evaluation
             )
             self.session = self.session.model_copy(
                 update={
                     "questions_count": result.questions_count,
+                    "answered_questions_count": result.answered_questions_count,
                     "status": (
                         "completed"
-                        if result.final_markdown is not None and not result.awaiting_user_answer
+                        if result.final_markdown is not None
+                        and not result.awaiting_user_answer
+                        and result.validation_report is not None
+                        and result.validation_report.valid
+                        else "needs_review"
+                        if result.final_markdown is not None
                         else self.session.status
                     ),
                 }
@@ -441,6 +450,8 @@ class ChatScreen(Screen[None]):
                 self.notify("Pesquisa indisponível; turno continuou em modo degradado.", severity="warning")
             elif result.research_findings:
                 self.notify(f"{len(result.research_findings)} referência(s) pesquisada(s).")
+            if result.validation_report is not None and not result.validation_report.valid:
+                self.notify("Documento requer revisão antes de ser considerado concluído.", severity="warning")
         finally:
             input_widget.value = ""
             input_widget.disabled = False
@@ -457,7 +468,11 @@ class ChatScreen(Screen[None]):
             result.quality_evaluation
         )
         self.session = self.session.model_copy(
-            update={"questions_count": result.questions_count, "status": "in_progress"}
+            update={
+                "questions_count": result.questions_count,
+                "answered_questions_count": result.answered_questions_count,
+                "status": "in_progress",
+            }
         )
         self._render_message("assistant", result.display_message)
         self._update_action_availability()
@@ -476,8 +491,8 @@ class ChatScreen(Screen[None]):
     def _update_action_availability(self) -> None:
         partial_enabled = (
             self.session.mode is DiscoveryMode.PROMPT_DESENVOLVIMENTO
-            and self.session.questions_count >= 10
-            and self.session.status != "completed"
+            and self.session.answered_questions_count >= 10
+            and self.session.status not in {"completed", "needs_review"}
         )
         self.query_one("#generate-partial", Button).disabled = not partial_enabled
         self.query_one("#continue-session", Button).disabled = self.session.status != "completed"

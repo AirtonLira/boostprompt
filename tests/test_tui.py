@@ -13,6 +13,7 @@ from boostprompt.memory.duckdb_store import ResumedSession
 from boostprompt.models.schemas import (
     DiscoveryMode,
     PromptQualityEvaluation,
+    PromptValidationReport,
     Session,
     SessionSummary,
     TurnResult,
@@ -121,7 +122,38 @@ class TenAnswerService(FakeService):
             display_message="### Pergunta 10 — Escopo",
             context={"necessidade": answer},
             questions_count=10,
+            answered_questions_count=10,
             awaiting_user_answer=True,
+        )
+
+
+class NineAnswerService(FakeService):
+    async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
+        self.submitted.append((session_id, answer))
+        return TurnResult(
+            display_message="### Pergunta 10 — Escopo",
+            context={"necessidade": answer},
+            questions_count=10,
+            answered_questions_count=9,
+            awaiting_user_answer=True,
+        )
+
+
+class NeedsReviewService(FakeService):
+    async def submit_answer(self, session_id: str, answer: str) -> TurnResult:
+        report = PromptValidationReport(
+            valid=False,
+            missing_sections=["## 17. Plano de execução"],
+        )
+        return TurnResult(
+            display_message="Documento requer revisão.",
+            context={"necessidade": answer},
+            questions_count=30,
+            answered_questions_count=30,
+            awaiting_user_answer=False,
+            final_markdown="# Prompt Mestre de Implementação - Portal",
+            quality_evaluation=PromptQualityEvaluation(validation_report=report),
+            validation_report=report,
         )
 
 
@@ -378,6 +410,37 @@ async def test_partial_prompt_button_becomes_available_after_ten_answers_and_ope
         assert service.partial_prompts == ["session-1"]
         assert isinstance(app.screen, MarkdownPreviewScreen)
         assert (tmp_path / "output" / "API_escopo.md").read_text(encoding="utf-8") == "# Rascunho do Prompt"
+
+
+@pytest.mark.asyncio
+async def test_partial_prompt_button_stays_disabled_after_nine_confirmed_answers() -> None:
+    app = BoostPromptApp(service=NineAnswerService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "API"
+        await pilot.click("#create")
+        app.screen.query_one("#chat-input", Input).value = "Preciso de uma API."
+        await pilot.click("#send")
+        await pilot.pause()
+
+        assert app.screen.query_one("#generate-partial", Button).disabled is True
+
+
+@pytest.mark.asyncio
+async def test_quality_panel_exposes_an_invalid_final_document() -> None:
+    app = BoostPromptApp(service=NeedsReviewService())
+
+    async with app.run_test() as pilot:
+        await pilot.click("#new_session")
+        app.screen.query_one("#session-name-input", Input).value = "Portal"
+        await pilot.click("#create")
+        app.screen.query_one("#chat-input", Input).value = "Criar portal."
+        await pilot.click("#send")
+        await pilot.pause()
+
+        panel = app.screen.query_one("#prompt-quality-panel")
+        assert "Documento requer revisão: ## 17. Plano de execução" in str(panel.render())
 
 
 @pytest.mark.asyncio
