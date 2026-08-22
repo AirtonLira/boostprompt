@@ -24,7 +24,7 @@ class InstallerTestCase(unittest.TestCase):
         self.home.mkdir()
         self.bin_dir.mkdir()
         self.command_log.touch()
-        for command in ("claude", "codex", "uvx"):
+        for command in ("claude", "codex"):
             self._write_command_stub(command)
 
     def _write_command_stub(self, name: str) -> None:
@@ -37,7 +37,7 @@ class InstallerTestCase(unittest.TestCase):
             "args = sys.argv[1:]\n"
             "with Path(os.environ['COMMAND_LOG']).open('a', encoding='utf-8') as log:\n"
             "    log.write(Path(sys.argv[0]).name + ' ' + ' '.join(args) + '\\n')\n"
-            "if args == ['mcp', 'get', 'ddg-search']:\n"
+            "if args == ['mcp', 'get', 'exa']:\n"
             "    raise SystemExit(0 if os.environ.get('MCP_EXISTS') == '1' else 1)\n"
             "raise SystemExit(0)\n",
             encoding="utf-8",
@@ -78,8 +78,8 @@ class PythonInstallerTests(InstallerTestCase):
         self.assertEqual(
             self.commands(),
             [
-                "claude mcp get ddg-search",
-                "claude mcp add --scope user ddg-search -- uvx duckduckgo-mcp-server",
+                "claude mcp get exa",
+                "claude mcp add --scope user --transport http exa https://mcp.exa.ai/mcp",
             ],
         )
 
@@ -92,8 +92,8 @@ class PythonInstallerTests(InstallerTestCase):
         self.assertEqual(
             self.commands(),
             [
-                "codex mcp get ddg-search",
-                "codex mcp add ddg-search -- uvx duckduckgo-mcp-server",
+                "codex mcp get exa",
+                "codex mcp add exa --url https://mcp.exa.ai/mcp",
             ],
         )
 
@@ -104,11 +104,11 @@ class PythonInstallerTests(InstallerTestCase):
         self.assertTrue((self.home / ".claude/skills/boostprompt/SKILL.md").is_file())
         self.assertTrue((self.home / ".agents/skills/boostprompt/SKILL.md").is_file())
         self.assertIn(
-            "claude mcp add --scope user ddg-search -- uvx duckduckgo-mcp-server",
+            "claude mcp add --scope user --transport http exa https://mcp.exa.ai/mcp",
             self.commands(),
         )
         self.assertIn(
-            "codex mcp add ddg-search -- uvx duckduckgo-mcp-server",
+            "codex mcp add exa --url https://mcp.exa.ai/mcp",
             self.commands(),
         )
 
@@ -131,7 +131,7 @@ class PythonInstallerTests(InstallerTestCase):
         result = self.run_installer("--harness", "claude", MCP_EXISTS="1")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.commands(), ["claude mcp get ddg-search"])
+        self.assertEqual(self.commands(), ["claude mcp get exa"])
 
     def test_invalid_harness_fails(self) -> None:
         result = self.run_installer("--harness", "unsupported")
@@ -139,12 +139,12 @@ class PythonInstallerTests(InstallerTestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("invalid choice", result.stderr)
 
-    def test_missing_uvx_fails_before_mcp_add(self) -> None:
-        (self.bin_dir / "uvx").unlink()
+    def test_missing_harness_fails_before_mcp_add(self) -> None:
+        (self.bin_dir / "claude").unlink()
         result = self.run_installer("--harness", "claude", PATH=str(self.bin_dir))
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("uvx", result.stderr)
+        self.assertIn("claude", result.stderr)
         self.assertEqual(self.commands(), [])
 
 

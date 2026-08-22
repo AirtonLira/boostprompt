@@ -5,13 +5,12 @@
 <h1 align="center">BoostPrompt</h1>
 
 <p align="center">
-  Discovery estruturado para transformar ideias e demandas em escopos prontos para execução.
+Discovery estruturado para transformar ideias e demandas em prompts prontos para implementação.
 </p>
 
 O **BoostPrompt** conduz o levantamento de requisitos com perguntas adaptativas,
 alternativas, trade-offs e recomendações. Ao final, ele organiza as decisões em um
-documento Markdown com escopo, critérios de aceite, plano de execução e prompt mestre
-para implementação.
+prompt Markdown único, autocontido, com requisitos, decisões, critérios de aceite e plano de execução.
 
 Você pode usar o projeto de duas formas independentes:
 
@@ -23,10 +22,10 @@ Você pode usar o projeto de duas formas independentes:
 - Entrevistas de discovery com **30 a 50 perguntas**, adaptadas às respostas anteriores;
 - dois modos de saída: `prompt_desenvolvimento` e `roteiro_perguntas_cliente`;
 - retomada de sessões e continuação de entrevistas concluídas;
-- geração e persistência de escopos em Markdown;
+- geração e persistência de prompts de implementação em Markdown;
 - resumo estruturado para manter o contexto compacto em sessões longas;
 - painel de qualidade com métricas locais de cobertura, clareza das decisões e prontidão do prompt;
-- pesquisa técnica opcional via MCP DuckDuckGo;
+- pesquisa técnica opcional via Exa, com fontes auditáveis;
 - integração com endpoints compatíveis com a API da OpenAI, LiteLLM e OpenAI;
 - skills instaláveis para Claude Code e Codex.
 
@@ -110,6 +109,7 @@ Variáveis úteis:
 | `OPENAI_API_KEY` | Credencial para uso direto da OpenAI |
 | `OPENAI_MODEL` | Modelo usado pela OpenAI diretamente |
 | `OPENAI_BASE_URL` | URL alternativa para a API da OpenAI |
+| `EXA_API_KEY` | Chave da Exa para a pesquisa técnica da CLI/TUI |
 | `BOOSTPROMPT_ENV_FILE` | Caminho de um arquivo `.env` alternativo |
 | `DUCKDB_PATH` | Caminho do banco local da aplicação |
 
@@ -132,7 +132,7 @@ criar uma sessão, listar sessões salvas ou retomar uma sessão pelo código
 5. Descreva a demanda inicial.
 6. No modo `prompt_desenvolvimento`, responda uma pergunta por vez. A aplicação fará entre 30 e 50 perguntas adaptadas às respostas anteriores.
 7. Depois de dez respostas, selecione **Gerar prompt agora** para salvar um rascunho sem encerrar a entrevista.
-8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o escopo.
+8. Ao final, selecione **Gerar/abrir Markdown** para visualizar e salvar o prompt mestre de implementação.
 
 Cada interação é persistida automaticamente; não há botão de salvar.
 
@@ -147,7 +147,7 @@ a última prontidão calculada e a data da atualização. O modo
 
 O banco padrão é `data/boostprompt.db`. Ele armazena:
 
-- metadados da sessão e contador de perguntas;
+- metadados da sessão e contadores de perguntas exibidas e respostas confirmadas;
 - respostas do usuário e perguntas/respostas dos agentes;
 - snapshots de contexto e decisões;
 - referências de pesquisa;
@@ -165,23 +165,16 @@ contexto do modelo compacto.
 O arquivo exportado fica em:
 
 ```text
-output/<nome_da_sessão>_escopo.md
+output/<nome_da_sessão>_prompt_mestre.md
 ```
 
 ### Pesquisa técnica
 
-Para pesquisas técnicas, a CLI inicia sob demanda o MCP DuckDuckGo por meio de:
-
-```bash
-uvx duckduckgo-mcp-server
-```
-
-Não é necessário registrar esse MCP manualmente para usar a TUI. É necessário
-apenas que `uvx` esteja disponível no `PATH` e consiga obter o pacote.
-
-O cliente usa timeout e, se o servidor falhar, continua em modo degradado sem
-inventar fontes. Referências válidas, com URL, são persistidas e usadas na seção
-**Referências consultadas** do Markdown.
+Para pesquisas técnicas, a CLI/TUI usa a API da Exa quando `EXA_API_KEY` está
+configurada. A pesquisa é planejada somente para decisões externas e mutáveis,
+prioriza fontes oficiais ou primárias e preserva URL, data, trecho e decisão
+fundamentada. Se a Exa estiver indisponível, a entrevista continua em modo
+degradado sem inventar fontes.
 
 ## 2. Skills para Claude Code e Codex
 
@@ -191,7 +184,7 @@ recuperam sessões locais: o histórico é o da própria conversa do Claude Code
 
 ### Instalar as skills
 
-O instalador copia a skill correta e configura o MCP `ddg-search` para o harness
+O instalador copia a skill correta e configura o MCP remoto `exa` para o harness
 escolhido:
 
 ```bash
@@ -205,7 +198,7 @@ uv run python install.py --harness claude
 uv run python install.py --harness codex
 ```
 
-O instalador exige que o executável do harness e o `uvx` estejam no `PATH`.
+O instalador exige somente o executável do harness no `PATH`.
 
 Para instalar ou atualizar somente a skill, sem alterar a configuração MCP:
 
@@ -226,8 +219,10 @@ Onde cada skill é instalada:
 | Claude Code | `.claude/skills/boostprompt/` | `~/.claude/skills/boostprompt/` |
 | Codex | `.codex/skills/boostprompt/` | `~/.agents/skills/boostprompt/` |
 
-O instalador preserva um MCP `ddg-search` que já exista. Quando precisa criá-lo,
-ele registra `uvx duckduckgo-mcp-server` como servidor MCP do harness.
+O instalador preserva configurações existentes e, quando precisa criar o servidor,
+registra `https://mcp.exa.ai/mcp` como MCP remoto. A autenticação remota segue a
+configuração suportada pelo próprio Claude Code ou Codex; não inclua chaves em
+arquivos versionados.
 
 ### Usando no Claude Code
 
@@ -265,8 +260,9 @@ Gere perguntas para levantar o escopo de um aplicativo de campo.
 ```
 
 O Codex usa o modelo, a autenticação e as permissões configurados no próprio
-harness. Quando o MCP `ddg-search` estiver disponível, a skill o usa para decisões
-técnicas atuais; caso contrário, continua em modo degradado.
+harness. Quando o MCP `exa` estiver disponível, a skill usa `web_search_exa` e,
+quando necessário, `web_fetch_exa` para decisões técnicas atuais; caso contrário,
+continua em modo degradado.
 
 ### Comportamento esperado
 
@@ -274,7 +270,7 @@ técnicas atuais; caso contrário, continua em modo degradado.
 - Em `prompt_desenvolvimento`, não encerra antes de 30 respostas e encerra no máximo na pergunta 50.
 - Cada pergunta apresenta contexto, alternativas, trade-offs, recomendação e forma de resposta.
 - Em `roteiro_perguntas_cliente`, entrega diretamente um único Markdown com 30 a 50 perguntas, sem iniciar a entrevista interativa.
-- O documento de escopo inclui decisões, plano de execução, critérios de aceite, estratégia de validação, pendências, referências e prompt mestre.
+- Em `prompt_desenvolvimento`, a saída é um único `# Prompt Mestre de Implementação` autocontido, com decisões, plano de execução, critérios de aceite, validação, pendências e referências.
 
 ## Desenvolvimento
 
@@ -295,7 +291,7 @@ uv run --extra dev mypy src
 
 Os testes evitam chamadas externas: agentes e MCP são substituídos por adaptadores
 controlados, preservando a validação funcional de TUI, DuckDB, resumo, LangGraph,
-pesquisa degradada e exportação Markdown.
+pesquisa Exa degradada e exportação Markdown.
 
 ## Estrutura do projeto
 
@@ -305,8 +301,8 @@ pesquisa degradada e exportação Markdown.
 ├── tests/              # Testes automatizados
 ├── examples/           # Exemplos de uso e artefatos de referência
 ├── data/               # Banco local gerado durante a execução
-├── output/             # Escopos Markdown exportados
-├── install.py          # Instalador das skills e do MCP
+├── output/             # Prompts Markdown exportados
+├── install.py          # Instalador das skills e do MCP Exa
 └── pyproject.toml      # Metadados, dependências e ferramentas do projeto
 ```
 

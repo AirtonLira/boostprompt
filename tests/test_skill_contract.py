@@ -32,6 +32,21 @@ class SkillContractTests(unittest.TestCase):
             ):
                 self.assertIn(section, content)
 
+    def test_each_skill_requires_exa_evidence_and_one_implementation_prompt(self) -> None:
+        for path in SKILLS:
+            content = path.read_text(encoding="utf-8")
+
+            for requirement in (
+                "web_search_exa",
+                "web_fetch_exa",
+                "modo degradado",
+                "fonte oficial",
+                "decisão que a referência fundamentou",
+                "# Prompt Mestre de Implementação",
+                "## 22. Instruções ao agente implementador",
+            ):
+                self.assertIn(requirement, content)
+
     def test_each_skill_supports_a_client_question_guide_mode(self) -> None:
         for path in SKILLS:
             content = path.read_text(encoding="utf-8")

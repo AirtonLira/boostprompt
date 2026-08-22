@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Instala a skill BoostPrompt e, opcionalmente, o MCP DuckDuckGo."""
+"""Instala a skill BoostPrompt e, opcionalmente, o MCP remoto Exa."""
 
 from __future__ import annotations
 
@@ -7,14 +7,13 @@ import argparse
 import shutil
 import subprocess
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
-
 
 ROOT = Path(__file__).resolve().parent
-SERVER_NAME = "ddg-search"
-SERVER_COMMAND = ("uvx", "duckduckgo-mcp-server")
+SERVER_NAME = "exa"
+SERVER_URL = "https://mcp.exa.ai/mcp"
 
 
 class InstallationError(RuntimeError):
@@ -60,9 +59,10 @@ def harnesses() -> dict[str, Harness]:
                 "add",
                 "--scope",
                 "user",
+                "--transport",
+                "http",
                 SERVER_NAME,
-                "--",
-                *SERVER_COMMAND,
+                SERVER_URL,
             ),
         ),
         "codex": Harness(
@@ -75,8 +75,8 @@ def harnesses() -> dict[str, Harness]:
                 "mcp",
                 "add",
                 SERVER_NAME,
-                "--",
-                *SERVER_COMMAND,
+                "--url",
+                SERVER_URL,
             ),
         ),
     }
@@ -109,7 +109,6 @@ def configure_mcp(harness: Harness, dry_run: bool) -> None:
         return
 
     require_command(harness.cli)
-    require_command(SERVER_COMMAND[0])
     existing = subprocess.run(get_command, text=True, capture_output=True, check=False)
     if existing.returncode == 0:
         print(f"MCP '{SERVER_NAME}' já existe para {harness.name}; configuração preservada.")

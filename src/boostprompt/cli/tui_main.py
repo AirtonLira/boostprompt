@@ -129,7 +129,7 @@ class NewSessionScreen(Screen[None]):
             yield Static(self._mode_description(), id="mode-description")
             with Horizontal(id="mode-actions"):
                 yield Button(
-                    "Escopo e prompt mestre",
+                    "Prompt de implementação",
                     id="mode-development",
                     variant="primary",
                 )
@@ -146,8 +146,8 @@ class NewSessionScreen(Screen[None]):
                 "gerado diretamente a partir da demanda."
             )
         return (
-            "Modo atual: entrevista guiada de 30 a 50 perguntas, seguida de escopo "
-            "e prompt mestre para implementação."
+            "Modo atual: entrevista guiada de 30 a 50 perguntas, seguida de um prompt "
+            "mestre de implementação."
         )
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -521,7 +521,7 @@ class ChatScreen(Screen[None]):
         if self.final_markdown is None:
             self.notify("O Markdown estará disponível após concluir o fluxo atual.", severity="warning")
             return
-        output_path = Path("output") / f"{self.session.nome.replace(' ', '_')}_escopo.md"
+        output_path = Path("output") / f"{self.session.nome.replace(' ', '_')}_prompt_mestre.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(self.final_markdown, encoding="utf-8")
         self.app.push_screen(MarkdownPreviewScreen(self.final_markdown, output_path))

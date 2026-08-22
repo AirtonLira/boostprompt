@@ -409,7 +409,7 @@ async def test_partial_prompt_button_becomes_available_after_ten_answers_and_ope
 
         assert service.partial_prompts == ["session-1"]
         assert isinstance(app.screen, MarkdownPreviewScreen)
-        assert (tmp_path / "output" / "API_escopo.md").read_text(encoding="utf-8") == "# Rascunho do Prompt"
+        assert (tmp_path / "output" / "API_prompt_mestre.md").read_text(encoding="utf-8") == "# Rascunho do Prompt"
 
 
 @pytest.mark.asyncio
@@ -460,7 +460,7 @@ async def test_chat_writes_the_final_markdown_and_opens_its_preview(tmp_path, mo
         await pilot.pause()
 
         assert isinstance(app.screen, MarkdownPreviewScreen)
-        assert (tmp_path / "output" / "Portal_final_escopo.md").read_text(encoding="utf-8") == (
+        assert (tmp_path / "output" / "Portal_final_prompt_mestre.md").read_text(encoding="utf-8") == (
             "# Escopo da Solução\n\n## 1. Resumo executivo"
         )
 
