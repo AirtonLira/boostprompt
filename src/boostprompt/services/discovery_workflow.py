@@ -29,6 +29,7 @@ from boostprompt.models.schemas import (
     TurnResult,
 )
 from boostprompt.research import ExaResearchProvider
+from boostprompt.services.prompt_artifact import PromptArtifactValidator
 from boostprompt.services.prompt_quality import PromptQualityEvaluator
 
 MINIMUM_PARTIAL_PROMPT_QUESTIONS = 10
@@ -103,6 +104,7 @@ class DiscoveryWorkflowService:
             synthesis=create_synthesis_agent(resolved_model),
             question_guide=QuestionGuideAgent(resolved_model),
             research_planner=ResearchPlannerAgent(resolved_model),
+            document_validator=PromptArtifactValidator(),
         )
         workflow = TurnWorkflow(
             agents,
@@ -136,6 +138,7 @@ class DiscoveryWorkflowService:
             {**resumed.context, **result.context},
             result.questions_count,
         )
+        evaluation = evaluation.model_copy(update={"validation_report": result.validation_report})
         result = result.model_copy(
             update={
                 "answered_questions_count": answered_questions_count,
@@ -151,8 +154,11 @@ class DiscoveryWorkflowService:
             result.final_markdown,
             status=(
                 "completed"
-                if result.final_markdown is not None and not result.awaiting_user_answer
-                else None
+                if result.final_markdown is not None
+                and not result.awaiting_user_answer
+                and result.validation_report is not None
+                and result.validation_report.valid
+                else "needs_review" if result.final_markdown is not None else None
             ),
             quality_evaluation=evaluation,
             answered_questions_count=answered_questions_count,
@@ -191,6 +197,7 @@ class DiscoveryWorkflowService:
             {**resumed.context, **result.context},
             result.questions_count,
         )
+        evaluation = evaluation.model_copy(update={"validation_report": result.validation_report})
         result = result.model_copy(
             update={
                 "answered_questions_count": resumed.session.answered_questions_count,

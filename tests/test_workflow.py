@@ -11,6 +11,7 @@ from boostprompt.models.schemas import (
     ResearchRequest,
 )
 from boostprompt.research import ResearchUnavailableError
+from boostprompt.services.prompt_artifact import PromptArtifactValidator
 
 
 def question() -> Question:
@@ -86,6 +87,24 @@ class FakeQuestionGuide:
             markdown="# Perguntas para Discovery com o Cliente\n",
             questions=[question()] * 30,
         )
+
+
+class RepairingSynthesis(FakeFinalAgent):
+    def __init__(self, first: str, repaired: str) -> None:
+        super().__init__()
+        self.first = first
+        self.repaired = repaired
+        self.repair_calls = 0
+
+    async def execute(self, state):
+        self.calls += 1
+        return {**state, "final_markdown": self.first}
+
+    async def repair(self, markdown, report, state):
+        self.repair_calls += 1
+        assert markdown == self.first
+        assert report.valid is False
+        return self.repaired
 
 
 def turn_state(questions_count: int) -> dict:
@@ -295,3 +314,27 @@ async def test_workflow_incorporates_the_fiftieth_answer_before_forced_finalizat
     assert result.final_markdown == "# Escopo final"
     assert result.questions_count == 50
     assert result.context["decisao_final"] == "Usar implantação gradual."
+
+
+@pytest.mark.asyncio
+async def test_workflow_repairs_an_invalid_document_once() -> None:
+    synthesis = RepairingSynthesis(first="# Escopo da Solução", repaired="# Ainda incompleto")
+    workflow = TurnWorkflow(
+        WorkflowAgents(
+            discovery=FakeDiscovery(
+                DiscoveryResponse(question=None, should_continue=False, summary="Concluído.")
+            ),
+            architecture=FakeFinalAgent(),
+            security=FakeFinalAgent(),
+            delivery=FakeFinalAgent(),
+            synthesis=synthesis,
+            document_validator=PromptArtifactValidator(),
+        )
+    )
+
+    result = await workflow.run_turn(turn_state(questions_count=30))
+
+    assert synthesis.repair_calls == 1
+    assert result.validation_report is not None
+    assert result.validation_report.valid is False
+    assert result.validation_report.repaired is True

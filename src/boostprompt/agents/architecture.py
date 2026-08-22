@@ -113,6 +113,10 @@ ARCHITECTURE_USER_PROMPT = """
 
 {decisions_json}
 
+## Referências de pesquisa
+
+{research_context}
+
 ## Sua Tarefa
 
 Com base no contexto acima, quais decisões de arquitetura você recomenda?
@@ -151,10 +155,12 @@ class ArchitectureAgent(BaseAgent):
 
         context = state.get("context", {})
         decisions = state.get("decisions", [])
+        research_context = state.get("research_context", "Nenhuma referência externa disponível.")
 
         user_prompt = ARCHITECTURE_USER_PROMPT.format(
             context_json=json.dumps(context, indent=2, ensure_ascii=False),
             decisions_json=json.dumps(decisions, indent=2, ensure_ascii=False),
+            research_context=research_context,
         )
 
         result = await self.agent.run(user_prompt)

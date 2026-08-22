@@ -7,13 +7,14 @@ Responsabilidades:
 - Incluir prompt mestre para implementação
 - Seguir estrutura definida na skill original
 """
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
 
-from boostprompt.models.schemas import Message
+from boostprompt.models.schemas import Message, PromptValidationReport
 
 from .base import BaseAgent
 
@@ -37,63 +38,45 @@ class SynthesisResponse(BaseModel):
 
 SYNTHESIS_SYSTEM_PROMPT = """Você é o Synthesis Agent do BoostPrompt.
 
-Sua função é consolidar todo o contexto coletado durante o discovery em um único documento Markdown completo, estruturado e implementável.
+Consolide o discovery em um único prompt Markdown autocontido, dirigido ao agente que
+implementará o sistema. Não gere um escopo separado nem repita o documento em outro
+"prompt mestre".
 
-## Estrutura Obrigatória do Documento
+O Markdown deve começar exatamente com `# Prompt Mestre de Implementação - <projeto>` e
+conter, nesta ordem, as 22 seções abaixo, todas com conteúdo concreto:
 
-O documento deve seguir EXATAMENTE esta estrutura:
+1. Contexto e objetivo
+2. Problema e contexto
+3. Objetivos de negócio
+4. Público-alvo, usuários e stakeholders
+5. Premissas e restrições
+6. Requisitos funcionais
+7. Requisitos não funcionais
+8. Arquitetura recomendada
+9. Stack tecnológica sugerida
+10. Dados, integrações e fluxos
+11. Segurança, privacidade e compliance
+12. Estratégia de entrega e operação
+13. Observabilidade, suporte e evolução
+14. Riscos, trade-offs e mitigação
+15. Roadmap sugerido
+16. Decisões consolidadas
+17. Plano de execução
+18. Critérios de aceite
+19. Estratégia de validação
+20. Pendências para execução
+21. Referências consultadas
+22. Instruções ao agente implementador
 
-```markdown
-# Escopo da Solução
+Use `## <número>. <título>` como cabeçalho de cada seção. Use listas para requisitos e
+critérios observáveis, tabelas para mapeamentos com três ou mais campos e cercas de código
+com linguagem para contratos técnicos. Não invente fatos: lacunas devem ser pendências.
 
-## 1. Resumo executivo
-## 2. Problema e contexto
-## 3. Objetivos de negócio
-## 4. Público-alvo, usuários e stakeholders
-## 5. Premissas e restrições
-## 6. Requisitos funcionais
-## 7. Requisitos não funcionais
-## 8. Arquitetura recomendada
-## 9. Stack tecnológica sugerida
-## 10. Dados, integrações e fluxos
-## 11. Segurança, privacidade e compliance
-## 12. Estratégia de entrega e operação
-## 13. Observabilidade, suporte e evolução
-## 14. Riscos, trade-offs e mitigação
-## 15. Roadmap sugerido
-## 16. Decisões consolidadas
-## 17. Plano de execução
-## 18. Critérios de aceite
-## 19. Estratégia de validação
-## 20. Pendências para execução
-## 21. Referências consultadas
-## 22. Prompt mestre para implementação
-```
-
-## Regras Importantes
-
-1. **Não invente informações** - use apenas o que foi coletado no discovery
-2. **Seja específico** - evite generalidades, seja concreto nas recomendações
-3. **Inclua trade-offs** - explicite decisões e alternativas descartadas
-4. **Prompt mestre** - deve ser detalhado o suficiente para implementar sem novo discovery
-5. **Português do Brasil** - todo o documento deve ser em pt-BR
-
-## Prompt Mestre
-
-O prompt mestre (seção 22) deve:
-- Estar em Markdown
-- Estar em português pt-BR
-- Ser detalhado e específico
-- Explicar o que construir e como construir
-- Incluir restrições, trade-offs, arquitetura, stack, integrações, testes, segurança, observabilidade e entrega
-- Usar exclusivamente as decisões e restrições do mesmo documento
-- Não solicitar um novo discovery
-
-## Formato de Resposta
-
-Sempre responda com:
-- `markdown_document`: O documento Markdown completo
-- `summary`: Resumo executivo (2-3 frases)
+Em referências, mantenha cada evidência com `[source_id]`, URL, data de consulta quando
+disponível e a decisão que ela fundamenta. A seção 22 deve instruir diretamente a execução
+e cobrir objetivo e escopo, restrições, requisitos funcionais e não funcionais, arquitetura,
+dados e integrações, segurança, testes, observabilidade, entrega e critérios de aceite, sem
+fazer referência a um documento acima ou a um prompt abaixo.
 """
 
 SYNTHESIS_USER_PROMPT = """
@@ -123,11 +106,27 @@ SYNTHESIS_USER_PROMPT = """
 
 ## Sua Tarefa
 
-Gere o documento Markdown completo seguindo a estrutura definida no system prompt.
+Gere o único prompt Markdown de implementação seguindo a estrutura definida no system prompt.
 
 Use todas as informações acima para criar um documento coerente, completo e implementável.
 
 Não deixe seções em branco. Se alguma informação não foi coletada, indique explicitamente como pendência.
+"""
+
+SYNTHESIS_REPAIR_PROMPT = """## Prompt Markdown a corrigir
+
+{markdown}
+
+## Lacunas da validação
+
+{report_json}
+
+## Contexto preservado
+
+{context_json}
+
+Corrija o Markdown sem inventar fatos nem remover decisões ou referências válidas. Retorne
+o único prompt completo com o título e as 22 seções exigidos.
 """
 
 
@@ -150,8 +149,6 @@ class SynthesisAgent(BaseAgent):
 
     async def execute(self, state: dict[str, Any]) -> dict[str, Any]:
         """Executa o agente de synthesis."""
-        import json
-
         context = state.get("context", {})
         decisions = state.get("decisions", [])
         security = state.get("security_requirements", [])
@@ -188,11 +185,27 @@ class SynthesisAgent(BaseAgent):
         new_state["messages"] = messages + [
             {
                 "role": "assistant",
-                "content": f"⬡ {response.summary}\n\nO documento Markdown completo foi gerado e está disponível para download."
+                "content": f"⬡ {response.summary}\n\nO prompt mestre de implementação foi gerado."
             }
         ]
 
         return new_state
+
+    async def repair(
+        self,
+        markdown: str,
+        report: PromptValidationReport,
+        state: dict[str, Any],
+    ) -> SynthesisResponse:
+        """Corrige uma única vez um prompt recusado pela validação estrutural."""
+
+        prompt = SYNTHESIS_REPAIR_PROMPT.format(
+            markdown=markdown,
+            report_json=report.model_dump_json(indent=2),
+            context_json=json.dumps(state.get("context", {}), indent=2, ensure_ascii=False),
+        )
+        result = await self.agent.run(prompt)
+        return result.output
 
     def _format_history(self, messages: list[Message | dict[str, Any]]) -> str:
         """Formata o histórico para exibição no prompt."""

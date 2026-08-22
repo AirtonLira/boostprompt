@@ -19,6 +19,7 @@ from boostprompt.models.schemas import (
     TurnResult,
 )
 from boostprompt.research import EvidencePolicy, ResearchUnavailableError
+from boostprompt.services.prompt_artifact import PromptArtifactValidator
 
 
 class FinalAgent(Protocol):
@@ -47,6 +48,8 @@ class TurnState(TypedDict, total=False):
     display_message: str
     final_markdown: str | None
     discovery_summary: str
+    validation_report: Any
+    repair_attempted: bool
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,7 @@ class WorkflowAgents:
     synthesis: FinalAgent
     question_guide: QuestionGuideAgent | None = None
     research_planner: ResearchPlannerAgent | None = None
+    document_validator: PromptArtifactValidator | None = None
 
 
 class TurnWorkflow:
@@ -72,6 +76,7 @@ class TurnWorkflow:
     ) -> None:
         self.agents = agents
         self.research_provider = research_provider
+        self.document_validator = agents.document_validator
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -84,6 +89,8 @@ class TurnWorkflow:
         graph.add_node("security", self._security)
         graph.add_node("delivery", self._delivery)
         graph.add_node("synthesis", self._synthesis)
+        graph.add_node("validate_document", self._validate_document)
+        graph.add_node("repair_document", self._repair_document)
         graph.add_node("complete", self._complete)
 
         graph.add_edge(START, "research_plan")
@@ -106,7 +113,13 @@ class TurnWorkflow:
         graph.add_edge("architecture", "security")
         graph.add_edge("security", "delivery")
         graph.add_edge("delivery", "synthesis")
-        graph.add_edge("synthesis", "complete")
+        graph.add_edge("synthesis", "validate_document")
+        graph.add_conditional_edges(
+            "validate_document",
+            self._route_after_validation,
+            {"complete": "complete", "repair": "repair_document"},
+        )
+        graph.add_edge("repair_document", "validate_document")
         graph.add_edge("complete", END)
         return graph.compile()
 
@@ -127,6 +140,7 @@ class TurnWorkflow:
             final_markdown=final_markdown,
             research_findings=final_state.get("research_findings", []),
             research_degraded=bool(final_state.get("research_degraded", False)),
+            validation_report=final_state.get("validation_report"),
         )
 
     async def _research_plan(self, state: TurnState) -> dict[str, Any]:
@@ -275,6 +289,36 @@ class TurnWorkflow:
 
     async def _synthesis(self, state: TurnState) -> dict[str, Any]:
         return await self.agents.synthesis.execute(dict(state))
+
+    async def _validate_document(self, state: TurnState) -> dict[str, Any]:
+        if self.document_validator is None:
+            return {}
+        markdown = state.get("final_markdown", "")
+        report = self.document_validator.validate(markdown or "")
+        if state.get("repair_attempted", False):
+            report = report.model_copy(update={"repaired": True})
+        return {"validation_report": report}
+
+    @staticmethod
+    def _route_after_validation(state: TurnState) -> str:
+        report = state.get("validation_report")
+        if report is None or report.valid or state.get("repair_attempted", False):
+            return "complete"
+        return "repair"
+
+    async def _repair_document(self, state: TurnState) -> dict[str, Any]:
+        repair = getattr(self.agents.synthesis, "repair", None)
+        if repair is None:
+            raise RuntimeError("SynthesisAgent não suporta reparo de prompt.")
+        repaired = await repair(
+            state.get("final_markdown", ""),
+            state["validation_report"],
+            dict(state),
+        )
+        markdown = getattr(repaired, "markdown_document", repaired)
+        if not isinstance(markdown, str):
+            raise TypeError("SynthesisAgent retornou um reparo de prompt inválido.")
+        return {"final_markdown": markdown, "repair_attempted": True}
 
     @staticmethod
     def _complete(state: TurnState) -> dict[str, Any]:

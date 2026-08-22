@@ -47,6 +47,7 @@ async def test_architecture_agent_merges_decisions_context_and_recommendations()
         {
             "context": {"necessidade": "Portal"},
             "decisions": [{"category": "escopo", "decision": "MVP"}],
+            "research_context": "- [source-1] FastAPI\n  URL: https://fastapi.tiangolo.com/",
             "messages": [{"role": "user", "content": "Criar portal."}],
         }
     )
@@ -55,6 +56,7 @@ async def test_architecture_agent_merges_decisions_context_and_recommendations()
     assert result["context"]["arquitetura"] == ["FastAPI", "PostgreSQL"]
     assert result["architecture_recommendations"] == ["Começar com monólito modular."]
     assert result["messages"][-1]["content"].endswith("A arquitetura inicial foi definida.")
+    assert "source-1" in agent.agent.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -75,6 +77,7 @@ async def test_security_agent_keeps_context_updates_even_without_new_requirement
     result = await agent.execute(
         {
             "context": {"necessidade": "CRM"},
+            "research_context": "- [source-1] LGPD\n  URL: https://www.gov.br/",
             "messages": [{"role": "user", "content": "Precisamos de um CRM."}],
         }
     )
@@ -82,6 +85,7 @@ async def test_security_agent_keeps_context_updates_even_without_new_requirement
     assert result["context"]["retencao"] == "Definir prazo com o jurídico"
     assert result["risks"] == ["Base legal ainda não confirmada"]
     assert result["compliance_frameworks"] == ["LGPD"]
+    assert "source-1" in agent.agent.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -120,7 +124,11 @@ async def test_delivery_agent_persists_the_operational_plan_in_context() -> None
     )
 
     result = await agent.execute(
-        {"context": {"necessidade": "Portal"}, "messages": []}
+        {
+            "context": {"necessidade": "Portal"},
+            "research_context": "- [source-1] OpenTelemetry\n  URL: https://opentelemetry.io/",
+            "messages": [],
+        }
     )
 
     assert result["context"]["entrega"] == [
@@ -132,6 +140,7 @@ async def test_delivery_agent_persists_the_operational_plan_in_context() -> None
     assert result["context"]["slo"] == "99,5%"
     assert result["delivery_tasks"] == ["Configurar pipeline de testes."]
     assert result["delivery_plan"]["ci_cd_tool"] == "GitHub Actions"
+    assert "source-1" in agent.agent.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -139,13 +148,13 @@ async def test_synthesis_returns_the_final_markdown_and_a_download_message() -> 
     agent = SynthesisAgent(model="test")
     agent.agent = StaticRunAgent(
         SynthesisResponse(
-            markdown_document="# Escopo da Solução\n\n## 1. Resumo executivo",
-            summary="Escopo pronto para implementação.",
+            markdown_document="# Prompt Mestre de Implementação - Portal\n\n## 1. Contexto e objetivo",
+            summary="Prompt pronto para implementação.",
         )
     )
 
     result = await agent.execute({"messages": []})
 
-    assert result["final_markdown"].startswith("# Escopo da Solução")
-    assert result["synthesis_summary"] == "Escopo pronto para implementação."
-    assert "documento Markdown completo foi gerado" in result["messages"][-1]["content"]
+    assert result["final_markdown"].startswith("# Prompt Mestre de Implementação")
+    assert result["synthesis_summary"] == "Prompt pronto para implementação."
+    assert "prompt mestre de implementação foi gerado" in result["messages"][-1]["content"]

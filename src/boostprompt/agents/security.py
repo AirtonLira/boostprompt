@@ -115,6 +115,10 @@ SECURITY_USER_PROMPT = """
 
 {architecture_json}
 
+## Referências de pesquisa
+
+{research_context}
+
 ## Sua Tarefa
 
 Com base no contexto e arquitetura acima, quais requisitos de segurança você identifica?
@@ -154,10 +158,12 @@ class SecurityAgent(BaseAgent):
 
         context = state.get("context", {})
         architecture = state.get("architecture_recommendations", [])
+        research_context = state.get("research_context", "Nenhuma referência externa disponível.")
 
         user_prompt = SECURITY_USER_PROMPT.format(
             context_json=json.dumps(context, indent=2, ensure_ascii=False),
             architecture_json=json.dumps(architecture, indent=2, ensure_ascii=False),
+            research_context=research_context,
         )
 
         result = await self.agent.run(user_prompt)
