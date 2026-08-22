@@ -2,11 +2,11 @@
 
 ## Objetivo
 
-Elevar a confiabilidade do artefato principal do BoostPrompt: um Markdown de
-escopo e um prompt mestre que possam ser entregues a um agente de implementacao
-sem redescobrir requisitos. A melhoria deve funcionar na TUI local e nas skills
-para Claude Code e Codex, substituindo DuckDuckGo por Exa como fonte principal de
-pesquisa atual e rastreavel.
+Elevar a confiabilidade do artefato principal do BoostPrompt: um unico prompt
+Markdown de implementacao, autocontido, que possa ser entregue a um agente sem
+redescobrir requisitos nem reconciliar documentos duplicados. A melhoria deve
+funcionar na TUI local e nas skills para Claude Code e Codex, substituindo
+DuckDuckGo por Exa como fonte principal de pesquisa atual e rastreavel.
 
 ## Escopo desta iteracao
 
@@ -18,8 +18,8 @@ pesquisa atual e rastreavel.
   auditoria.
 - Garantir que a pesquisa alimente a proxima pergunta e os agentes finais de
   arquitetura, seguranca, entrega e sintese.
-- Validar estruturalmente o documento final e o prompt mestre; fazer uma unica
-  tentativa de reparo quando o modelo omitir informacoes exigidas.
+- Validar estruturalmente o unico prompt final; fazer uma unica tentativa de
+  reparo quando o modelo omitir informacoes exigidas.
 - Corrigir o limiar do prompt parcial para exigir dez respostas efetivas, e nao
   apenas dez perguntas exibidas.
 
@@ -64,7 +64,7 @@ quando a entrevista termina ou o usuario pede rascunho
   -> arquitetura -> seguranca -> entrega -> sintese
   -> PromptArtifactValidator
   -> reparo unico pela sintese, somente se necessario
-  -> persistencia do Markdown validado e do relatorio de qualidade
+  -> persistencia do prompt Markdown validado e do relatorio de qualidade
 ```
 
 O planejador ve a resposta mais recente, o resumo compactado e o contexto
@@ -115,22 +115,45 @@ converter uma avaliacao visual de prontidao em afirmacao de garantia semantica.
 - A sintese recebe no maximo oito fontes distintas e deve associar cada uma a uma
   decisao. Ela nao recebe URL sem o identificador da evidencia correspondente.
 
-## Garantia do documento
+## Prompt final unico
 
-`PromptArtifactValidator` e deterministico. Ele exige as 22 secoes previstas no
-contrato do BoostPrompt, conteudo nao vazio nas secoes 16 a 22, URLs validas nas
-referencias quando houver evidencia e um prompt mestre que cubra objetivo, escopo,
-restricoes, requisitos funcionais e nao funcionais, arquitetura, dados e
-integracoes, seguranca, testes, observabilidade, entrega e criterio de aceite.
+O resultado final nao tera um documento de escopo seguido de uma secao que repete
+o mesmo conteudo como "prompt mestre". Ele tera o titulo
+`# Prompt Mestre de Implementacao - <nome do projeto>` e sera, por inteiro, a
+instrucao dirigida ao agente que implementara o sistema.
+
+O prompt conserva as 22 areas de informacao necessarias, mas a ultima deixa de
+ser uma copia do artefato. A hierarquia canonica sera: contexto e objetivo,
+problema, resultados de negocio, usuarios, premissas, requisitos funcionais e
+nao funcionais, arquitetura e stack, dados e fluxos, seguranca, entrega,
+operacao, riscos, roadmap, decisoes, plano de execucao, criterios de aceite,
+estrategia de validacao, pendencias, referencias e, por fim, instrucoes diretas
+ao agente implementador. Assim, a secao final complementa as especificacoes
+anteriores em vez de resumi-las ou reescreve-las.
+
+O Markdown deve usar apenas uma hierarquia de titulos, listas para requisitos e
+criterios observaveis, tabelas para mapeamentos com tres ou mais campos, cercas de
+codigo com linguagem para contratos tecnicos e citacoes identificadas junto da
+decisao que fundamentam. Nao pode conter secoes vazias, instrucoes contraditorias,
+URL sem contexto ou referencias a um "documento acima" ou "prompt abaixo".
+
+## Garantia do prompt
+
+`PromptArtifactValidator` e deterministico. Ele exige o titulo canonico e as 22
+secoes do prompt unico, conteudo nao vazio nas secoes 16 a 22, URLs validas nas
+referencias quando houver evidencia e instrucoes ao implementador que cubram
+objetivo, escopo, restricoes, requisitos funcionais e nao funcionais, arquitetura,
+dados e integracoes, seguranca, testes, observabilidade, entrega e criterio de
+aceite.
 
 O validador nao infere fatos e nao aprova alegacoes por plausibilidade. Quando
 falhar, a sintese recebe somente a lista de lacunas e o Markdown gerado para fazer
 uma unica correcao. Se a segunda validacao falhar, o documento e salvo como
 rascunho com alertas explicitos; nunca como escopo final validado.
 
-O prompt parcial usa a mesma validacao, mas pode retornar alertas de cobertura
-esperados. Ele so fica disponivel apos dez respostas de discovery confirmadas,
-separadas da descricao inicial da demanda.
+O prompt parcial usa o mesmo formato unico e a mesma validacao, mas pode retornar
+alertas de cobertura esperados. Ele so fica disponivel apos dez respostas de
+discovery confirmadas, separadas da descricao inicial da demanda.
 
 ## Alteracoes nas skills e no instalador
 

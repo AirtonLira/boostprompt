@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Substituir DuckDuckGo por pesquisa Exa orientada a decisoes e impedir que o BoostPrompt marque como final um escopo cujo Markdown ou prompt mestre esteja incompleto.
+**Goal:** Substituir DuckDuckGo por pesquisa Exa orientada a decisoes e entregar um unico prompt Markdown de implementacao, sem duplicar um escopo e um prompt mestre separados.
 
 **Architecture:** Um ResearchPlannerAgent decide se e como pesquisar antes de cada pergunta; ExaResearchProvider e EvidencePolicy retornam evidencias normalizadas e auditaveis para o workflow. No fechamento, o workflow valida o Markdown, permite exatamente uma correcao pela sintese e persiste tanto o relatorio quanto a contagem real de respostas.
 
@@ -18,7 +18,7 @@
 | src/boostprompt/research/exa.py | Cliente HTTP Exa e normalizacao de falhas. |
 | src/boostprompt/research/evidence.py | Deduplicacao, classificacao e limite de evidencias. |
 | src/boostprompt/agents/research_planner.py | Planejamento de ate duas consultas por turno. |
-| src/boostprompt/services/prompt_artifact.py | Validacao deterministica do documento final. |
+| src/boostprompt/services/prompt_artifact.py | Validacao deterministica do prompt final unico. |
 | src/boostprompt/graph/workflow.py | Ordem planner -> pesquisa -> entrevista e reparo unico. |
 | src/boostprompt/{services/discovery_workflow.py,memory/duckdb_store.py} | Factories, estado, migracao e persistencia atomica. |
 | src/boostprompt/agents/{architecture,security,delivery,synthesis}.py | Uso de evidencias, citacoes e reparo. |
@@ -362,7 +362,7 @@ git add src/boostprompt/memory/duckdb_store.py src/boostprompt/services/discover
 git commit -m "feat: persist Exa evidence and confirmed discovery answers"
 ~~~~
 
-### Task 5: Validar o artefato final e fazer um unico reparo da sintese
+### Task 5: Gerar, validar e reparar o prompt final unico
 
 **Files:**
 - Create: src/boostprompt/services/prompt_artifact.py
@@ -379,7 +379,9 @@ git commit -m "feat: persist Exa evidence and confirmed discovery answers"
 
 ~~~~python
 def test_validator_reports_absent_sections_and_master_prompt_topics() -> None:
-    report = PromptArtifactValidator().validate("# Escopo da Solução\n\n## 1. Resumo executivo\nTexto")
+    report = PromptArtifactValidator().validate(
+        "# Prompt Mestre de Implementação - Portal\n\n## 1. Contexto e objetivo\nTexto"
+    )
     assert "## 17. Plano de execução" in report.missing_sections
     assert "segurança" in report.missing_prompt_topics
     assert report.valid is False
@@ -404,11 +406,11 @@ Expected: FAIL porque synthesis vai direto a complete.
 
 - [ ] **Step 3: Implementar validacao e reparo unico**
 
-PromptArtifactValidator declara os 22 cabecalhos como constantes e localiza cada um por regex multiline. Um cabecalho inexistente ou sem conteudo ate o proximo ## e uma lacuna. Nas secoes 16 a 22, corpo vazio tambem invalida. Na secao 21, validar todas as URLs encontradas com urllib.parse.urlparse. Na secao 22, normalizar caixa e acentos e exigir os grupos: objetivo/escopo, restricao, requisito funcional, requisito nao funcional, arquitetura, dados/integracao, seguranca, teste, observabilidade, entrega e criterio de aceite.
+PromptArtifactValidator declara o titulo # Prompt Mestre de Implementação e os 22 cabecalhos canonicos como constantes e localiza cada um por regex multiline. Um cabecalho inexistente ou sem conteudo ate o proximo ## e uma lacuna. Nas secoes 16 a 22, corpo vazio tambem invalida. Na secao 21, validar todas as URLs encontradas com urllib.parse.urlparse. Na secao 22, normalizar caixa e acentos e exigir os grupos: objetivo/escopo, restricao, requisito funcional, requisito nao funcional, arquitetura, dados/integracao, seguranca, teste, observabilidade, entrega e criterio de aceite. Rejeitar os titulos legados # Escopo da Solução e ## 22. Prompt mestre para implementação e qualquer instrucao que dependa de outro documento.
 
 No grafo, inserir validate_document e repair_document apos synthesis. validate_document escreve validation_report; a rota vai para complete se valido ou se repair_attempted ja existir, e vai para repair_document somente uma vez. repair_document chama SynthesisAgent.repair(markdown, report, state), troca final_markdown e marca repair_attempted=True antes de validar outra vez.
 
-SynthesisAgent.repair recebe o Markdown e as listas do relatorio, preserva fatos e fontes e retorna SynthesisResponse. O prompt normal exige citacoes [source_id] e linhas de referencia com URL, data de consulta e decisao sustentada. Passar research_context tambem para arquitetura, seguranca e delivery.
+SynthesisAgent.repair recebe o Markdown e as listas do relatorio, preserva fatos e fontes e retorna SynthesisResponse. O prompt normal exige o titulo e os 22 cabecalhos do prompt unico, citacoes [source_id], linhas de referencia com URL, data de consulta e decisao sustentada e instrucao direta ao agente na secao 22 sem repetir as secoes anteriores. Passar research_context tambem para arquitetura, seguranca e delivery.
 
 DiscoveryWorkflowService marca completed somente se validation_report.valid; caso contrario, needs_review. O rascunho antecipado permanece in_progress.
 
@@ -511,7 +513,7 @@ def test_installs_codex_skill_and_adds_remote_exa_mcp(self) -> None:
     self.assertIn("codex mcp add exa --url https://mcp.exa.ai/mcp", self.commands())
 ~~~~
 
-Em test_skill_contract.py, exigir web_search_exa, web_fetch_exa, modo degradado, fonte primária e qual decisão a referência fundamentou nas duas skills.
+Em test_skill_contract.py, exigir web_search_exa, web_fetch_exa, modo degradado, fonte primária, qual decisão a referência fundamentou e # Prompt Mestre de Implementação nas duas skills.
 
 - [ ] **Step 2: Executar para confirmar a falha**
 
@@ -522,7 +524,7 @@ Expected: FAIL porque ainda ha ddg-search e DuckDuckGo.
 
 Em install.py, usar SERVER_NAME = "exa" e SERVER_URL = "https://mcp.exa.ai/mcp". Para Claude, executar claude mcp add --scope user --transport http exa https://mcp.exa.ai/mcp; para Codex, codex mcp add exa --url https://mcp.exa.ai/mcp. Remover require_command("uvx"), preservar quaisquer configuracoes ddg-search ja pertencentes ao usuario.
 
-Nas duas skills, usar web_search_exa antes de perguntas tecnicas atuais e web_fetch_exa quando o trecho nao bastar. Priorizar fonte oficial, primaria e recente; gravar URL, data e decisao sustentada; declarar modo degradado se MCP estiver indisponivel. Preservar ambos os modos e os limites de 30 a 50 perguntas.
+Nas duas skills, usar web_search_exa antes de perguntas tecnicas atuais e web_fetch_exa quando o trecho nao bastar. Priorizar fonte oficial, primaria e recente; gravar URL, data e decisao sustentada; declarar modo degradado se MCP estiver indisponivel. No modo prompt_desenvolvimento, instruir que a resposta final e somente um # Prompt Mestre de Implementação autocontido, com 22 secoes e sem duplicar um escopo anterior. Preservar ambos os modos e os limites de 30 a 50 perguntas.
 
 Adicionar EXA_API_KEY= a .env.example. README descreve chave para CLI e MCP remoto autenticado pelo harness. Remover uvx como pre-requisito de pesquisa.
 
