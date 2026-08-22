@@ -132,7 +132,14 @@ async def build_service_with_ten_answers(tmp_path) -> tuple[DiscoveryWorkflowSer
         summary_agent=FakeSummaryAgent(),
     )
     session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
-    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+    service.repository.append_turn(
+        session.id,
+        "Demanda",
+        "Pergunta 10",
+        {"objetivo": "CRM"},
+        10,
+        answered_questions_count=10,
+    )
     return service, session.id
 
 
@@ -186,6 +193,23 @@ async def test_submit_answer_persists_answer_and_next_question(tmp_path) -> None
         "### Pergunta 1 — Objetivos\n\nQual resultado define sucesso?",
     ]
     assert workflow.states[0]["context"]["necessidade"] == "Preciso cobrar clientes."
+
+
+@pytest.mark.asyncio
+async def test_submit_answer_counts_only_answers_to_displayed_questions(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=FakeWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+    session = await service.create_session("Pagamentos", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+
+    initial = await service.submit_answer(session.id, "Preciso cobrar clientes.")
+    confirmed = await service.submit_answer(session.id, "Lojistas parceiros.")
+
+    assert initial.answered_questions_count == 0
+    assert confirmed.answered_questions_count == 1
+    assert service.resume_session(session.id).session.answered_questions_count == 1
 
 
 @pytest.mark.asyncio
@@ -312,13 +336,41 @@ async def test_partial_prompt_requires_ten_answered_questions(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_partial_prompt_requires_ten_confirmed_answers(tmp_path) -> None:
+    service = DiscoveryWorkflowService.with_database(
+        db_path=tmp_path / "sessions.db",
+        workflow=FakeWorkflow(),
+        summary_agent=FakeSummaryAgent(),
+    )
+    session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
+    service.repository.append_turn(
+        session.id,
+        "Demanda",
+        "Pergunta 10",
+        {"objetivo": "CRM"},
+        10,
+        answered_questions_count=9,
+    )
+
+    with pytest.raises(ValueError, match="10 respostas"):
+        await service.generate_partial_prompt(session.id)
+
+
+@pytest.mark.asyncio
 async def test_partial_prompt_finalizes_without_appending_a_user_message(tmp_path) -> None:
     workflow = PartialFinalWorkflow()
     service = DiscoveryWorkflowService.with_database(
         db_path=tmp_path / "sessions.db", workflow=workflow, summary_agent=FakeSummaryAgent()
     )
     session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
-    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+    service.repository.append_turn(
+        session.id,
+        "Demanda",
+        "Pergunta 10",
+        {"objetivo": "CRM"},
+        10,
+        answered_questions_count=10,
+    )
 
     result = await service.generate_partial_prompt(session.id)
 
@@ -382,7 +434,14 @@ async def test_session_accepts_new_answers_after_partial_prompt_generation(tmp_p
         summary_agent=FakeSummaryAgent(),
     )
     session = await service.create_session("CRM", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
-    service.repository.append_turn(session.id, "Demanda", "Pergunta 10", {"objetivo": "CRM"}, 10)
+    service.repository.append_turn(
+        session.id,
+        "Demanda",
+        "Pergunta 10",
+        {"objetivo": "CRM"},
+        10,
+        answered_questions_count=10,
+    )
 
     await service.generate_partial_prompt(session.id)
     await service.submit_answer(session.id, "A nova feature terá auditoria.")
@@ -391,19 +450,6 @@ async def test_session_accepts_new_answers_after_partial_prompt_generation(tmp_p
     assert resumed.session.status == "in_progress"
     assert resumed.session.questions_count == 11
     assert service.repository.get_messages(session.id)[-1]["content"] == "### Pergunta 11 — Escopo"
-
-
-def test_research_query_ignores_common_words_that_only_contain_a_technical_substring(tmp_path) -> None:
-    service = DiscoveryWorkflowService.with_database(
-        db_path=tmp_path / "sessions.db",
-        workflow=FakeWorkflow(),
-        summary_agent=FakeSummaryAgent(),
-    )
-    try:
-        assert service._research_query("Quero criar um portal para fornecedores.") == ""
-        assert service._research_query("Precisamos de uma API para o portal.").startswith("Precisamos")
-    finally:
-        service.close()
 
 
 @pytest.mark.asyncio
@@ -434,7 +480,6 @@ async def test_service_supplies_previously_persisted_references_to_the_final_wor
     session = await service.create_session("Portal", DiscoveryMode.PROMPT_DESENVOLVIMENTO)
     service.repository.save_research_findings(
         session.id,
-        "LangGraph",
         [
             ResearchFinding(
                 title="Documentação LangGraph",

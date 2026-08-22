@@ -17,6 +17,8 @@ from boostprompt.models.schemas import (
     DiscoveryMode,
     Message,
     PromptQualityEvaluation,
+    PromptValidationReport,
+    ResearchFinding,
     Session,
     SessionSummary,
 )
@@ -61,7 +63,8 @@ class DuckDBStore:
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
-                questions_count INTEGER NOT NULL DEFAULT 0
+                questions_count INTEGER NOT NULL DEFAULT 0,
+                answered_questions_count INTEGER NOT NULL DEFAULT 0
             )
             """
         )
@@ -88,7 +91,8 @@ class DuckDBStore:
                 prompt_readiness INTEGER,
                 questions_count INTEGER NOT NULL,
                 status_text TEXT NOT NULL,
-                evaluated_at TIMESTAMP NOT NULL
+                evaluated_at TIMESTAMP NOT NULL,
+                validation_report TEXT
             )
             """
         )
@@ -137,7 +141,10 @@ class DuckDBStore:
                 url TEXT NOT NULL,
                 excerpt TEXT NOT NULL,
                 decision_context TEXT NOT NULL,
-                consulted_at TIMESTAMP NOT NULL
+                consulted_at TIMESTAMP NOT NULL,
+                published_at TIMESTAMP,
+                source_kind TEXT NOT NULL DEFAULT 'unknown',
+                relevance_score DOUBLE
             )
             """
         )
@@ -160,6 +167,21 @@ class DuckDBStore:
         )
         self.conn.execute(
             "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS questions_count INTEGER DEFAULT 0"
+        )
+        self.conn.execute(
+            "ALTER TABLE sessions ADD COLUMN IF NOT EXISTS answered_questions_count INTEGER DEFAULT 0"
+        )
+        self.conn.execute(
+            "ALTER TABLE research_findings ADD COLUMN IF NOT EXISTS published_at TIMESTAMP"
+        )
+        self.conn.execute(
+            "ALTER TABLE research_findings ADD COLUMN IF NOT EXISTS source_kind TEXT DEFAULT 'unknown'"
+        )
+        self.conn.execute(
+            "ALTER TABLE research_findings ADD COLUMN IF NOT EXISTS relevance_score DOUBLE"
+        )
+        self.conn.execute(
+            "ALTER TABLE session_quality_evaluations ADD COLUMN IF NOT EXISTS validation_report TEXT"
         )
         self.conn.execute("ALTER TABLE messages ADD COLUMN IF NOT EXISTS sequence INTEGER")
         self.conn.execute(
@@ -275,8 +297,9 @@ class DuckDBStore:
         self.conn.execute(
             """
             INSERT INTO sessions (
-                id, codigo, nome, mode, created_at, updated_at, status, questions_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                id, codigo, nome, mode, created_at, updated_at, status, questions_count,
+                answered_questions_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 session.id,
@@ -287,6 +310,7 @@ class DuckDBStore:
                 session.updated_at,
                 session.status,
                 session.questions_count,
+                session.answered_questions_count,
             ],
         )
 
@@ -313,6 +337,7 @@ class DuckDBStore:
         final_markdown: str | None = None,
         status: str | None = None,
         quality_evaluation: PromptQualityEvaluation | None = None,
+        answered_questions_count: int | None = None,
     ) -> None:
         """Persiste exatamente a resposta e a saída do turno atual."""
 
@@ -326,10 +351,12 @@ class DuckDBStore:
             self.conn.execute(
                 """
                 UPDATE sessions
-                SET updated_at = ?, questions_count = ?, status = COALESCE(?, status)
+                SET updated_at = ?, questions_count = ?,
+                    answered_questions_count = COALESCE(?, answered_questions_count),
+                    status = COALESCE(?, status)
                 WHERE id = ?
                 """,
-                [_utc_now(), questions_count, status, session_id],
+                [_utc_now(), questions_count, answered_questions_count, status, session_id],
             )
             if final_markdown is not None:
                 self._save_final_markdown(session_id, final_markdown)
@@ -468,7 +495,8 @@ class DuckDBStore:
             INSERT INTO session_quality_evaluations (
                 id, session_id, applicable, coverage, decision_clarity,
                 prompt_readiness, questions_count, status_text, evaluated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                , validation_report
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 str(uuid.uuid4()),
@@ -480,6 +508,11 @@ class DuckDBStore:
                 evaluation.questions_count,
                 evaluation.status_text,
                 evaluation.evaluated_at.replace(tzinfo=None),
+                (
+                    evaluation.validation_report.model_dump_json()
+                    if evaluation.validation_report is not None
+                    else None
+                ),
             ],
         )
 
@@ -542,7 +575,7 @@ class DuckDBStore:
         row = self.conn.execute(
             """
             SELECT applicable, coverage, decision_clarity, prompt_readiness,
-                   questions_count, status_text, evaluated_at
+                   questions_count, status_text, evaluated_at, validation_report
             FROM session_quality_evaluations
             WHERE session_id = ?
             ORDER BY evaluated_at DESC, id DESC
@@ -560,6 +593,9 @@ class DuckDBStore:
             questions_count=row[4],
             status_text=row[5],
             evaluated_at=row[6],
+            validation_report=(
+                PromptValidationReport.model_validate_json(row[7]) if row[7] is not None else None
+            ),
         )
 
     def save_summary(self, session_id: str, summary: SessionSummary) -> None:
@@ -622,8 +658,7 @@ class DuckDBStore:
     def save_research_findings(
         self,
         session_id: str,
-        query: str,
-        findings: Sequence[Any],
+        findings: Sequence[ResearchFinding],
     ) -> None:
         """Mantém as fontes usadas em uma decisão para a seção de referências."""
 
@@ -632,18 +667,26 @@ class DuckDBStore:
                 self.conn.execute(
                     """
                     INSERT INTO research_findings (
-                        id, session_id, query, title, url, excerpt, decision_context, consulted_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        id, session_id, query, title, url, excerpt, decision_context, consulted_at,
+                        published_at, source_kind, relevance_score
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
-                        str(uuid.uuid4()),
+                        finding.source_id,
                         session_id,
-                        query,
+                        finding.query,
                         finding.title,
                         finding.url,
                         finding.excerpt,
                         finding.decision_context,
                         finding.consulted_at.replace(tzinfo=None),
+                        (
+                            finding.published_at.replace(tzinfo=None)
+                            if finding.published_at is not None
+                            else None
+                        ),
+                        finding.source_kind.value,
+                        finding.relevance_score,
                     ],
                 )
 
@@ -652,7 +695,8 @@ class DuckDBStore:
 
         rows = self.conn.execute(
             """
-            SELECT query, title, url, excerpt, decision_context, consulted_at
+            SELECT id, query, title, url, excerpt, decision_context, consulted_at,
+                   published_at, source_kind, relevance_score
             FROM research_findings
             WHERE session_id = ?
             ORDER BY consulted_at ASC, id ASC
@@ -661,12 +705,16 @@ class DuckDBStore:
         ).fetchall()
         return [
             {
-                "query": row[0],
-                "title": row[1],
-                "url": row[2],
-                "excerpt": row[3],
-                "decision_context": row[4],
-                "consulted_at": row[5],
+                "source_id": row[0],
+                "query": row[1],
+                "title": row[2],
+                "url": row[3],
+                "excerpt": row[4],
+                "decision_context": row[5],
+                "consulted_at": row[6],
+                "published_at": row[7],
+                "source_kind": row[8],
+                "relevance_score": row[9],
             }
             for row in rows
         ]
@@ -734,7 +782,7 @@ class DuckDBStore:
         rows = self.conn.execute(
             """
             SELECT s.id, s.codigo, s.nome, s.mode, s.created_at, s.updated_at,
-                   s.status, s.questions_count, quality.prompt_readiness,
+                   s.status, s.questions_count, s.answered_questions_count, quality.prompt_readiness,
                    quality.applicable, quality.evaluated_at
             FROM sessions AS s
             LEFT JOIN LATERAL (
@@ -752,7 +800,8 @@ class DuckDBStore:
     def get_session(self, session_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
-            SELECT id, codigo, nome, mode, created_at, updated_at, status, questions_count
+            SELECT id, codigo, nome, mode, created_at, updated_at, status, questions_count,
+                   answered_questions_count
             FROM sessions
             WHERE id = ?
             """,
@@ -776,13 +825,14 @@ class DuckDBStore:
             "updated_at": row[5],
             "status": row[6],
             "questions_count": row[7] or 0,
+            "answered_questions_count": row[8] or 0,
         }
-        if len(row) > 8:
+        if len(row) > 9:
             session.update(
                 {
-                    "prompt_readiness": row[8],
-                    "quality_applicable": row[9],
-                    "quality_evaluated_at": row[10],
+                    "prompt_readiness": row[9],
+                    "quality_applicable": row[10],
+                    "quality_evaluated_at": row[11],
                 }
             )
         return session

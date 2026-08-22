@@ -128,12 +128,20 @@ class DiscoveryWorkflowService:
         resumed = self.repository.load_for_resume(session_id, self.recent_message_limit)
         state = self._build_turn_state(resumed, clean_answer)
         result = await self.workflow.run_turn(state)
+        answered_questions_count = resumed.session.answered_questions_count + int(
+            resumed.session.questions_count > 0
+        )
         evaluation = self._evaluate_quality(
             resumed,
             {**resumed.context, **result.context},
             result.questions_count,
         )
-        result = result.model_copy(update={"quality_evaluation": evaluation})
+        result = result.model_copy(
+            update={
+                "answered_questions_count": answered_questions_count,
+                "quality_evaluation": evaluation,
+            }
+        )
         self.repository.append_turn(
             session_id,
             clean_answer,
@@ -147,10 +155,10 @@ class DiscoveryWorkflowService:
                 else None
             ),
             quality_evaluation=evaluation,
+            answered_questions_count=answered_questions_count,
         )
         if result.research_findings:
-            for finding in result.research_findings:
-                self.repository.save_research_findings(session_id, finding.query, [finding])
+            self.repository.save_research_findings(session_id, result.research_findings)
         await self._summarize_if_needed(session_id, result.context)
         return result
 
@@ -171,8 +179,8 @@ class DiscoveryWorkflowService:
             raise ValueError(
                 "A geração antecipada está disponível apenas para entrevistas de desenvolvimento."
             )
-        if resumed.session.questions_count < MINIMUM_PARTIAL_PROMPT_QUESTIONS:
-            raise ValueError("Responda pelo menos 10 perguntas antes de gerar o prompt.")
+        if resumed.session.answered_questions_count < MINIMUM_PARTIAL_PROMPT_QUESTIONS:
+            raise ValueError("Responda pelo menos 10 respostas confirmadas antes de gerar o prompt.")
         state = self._build_turn_state(resumed, answer=None, force_finalize=True)
         result = await self.workflow.run_turn(state)
         final_markdown = result.final_markdown
@@ -183,7 +191,12 @@ class DiscoveryWorkflowService:
             {**resumed.context, **result.context},
             result.questions_count,
         )
-        result = result.model_copy(update={"quality_evaluation": evaluation})
+        result = result.model_copy(
+            update={
+                "answered_questions_count": resumed.session.answered_questions_count,
+                "quality_evaluation": evaluation,
+            }
+        )
         self.repository.save_generated_markdown(
             session_id,
             result.context,

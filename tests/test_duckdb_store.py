@@ -1,5 +1,15 @@
+from datetime import UTC, date, datetime
+
+import duckdb
+
 from boostprompt.memory.duckdb_store import DuckDBStore
-from boostprompt.models.schemas import DiscoveryMode, PromptQualityEvaluation, SessionSummary
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    PromptQualityEvaluation,
+    ResearchFinding,
+    SessionSummary,
+    SourceKind,
+)
 
 
 def test_append_turn_is_durable_and_never_duplicates_prior_messages(tmp_path) -> None:
@@ -28,6 +38,62 @@ def test_append_turn_is_durable_and_never_duplicates_prior_messages(tmp_path) ->
         "Qual volume diário é esperado?",
     ]
     assert store.get_session(session.id)["questions_count"] == 2
+
+
+def test_legacy_database_adds_answer_counter_with_zero_default(tmp_path) -> None:
+    database_path = tmp_path / "legacy.db"
+    connection = duckdb.connect(str(database_path))
+    connection.execute(
+        """
+        CREATE TABLE sessions (
+            id TEXT PRIMARY KEY,
+            codigo TEXT UNIQUE NOT NULL,
+            nome TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            status TEXT NOT NULL,
+            questions_count INTEGER NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO sessions VALUES
+        ('legacy-session', 'BP-2026-001', 'Legada', 'prompt_desenvolvimento', ?, ?, 'active', 1)
+        """,
+        [datetime(2026, 8, 22, tzinfo=UTC), datetime(2026, 8, 22, tzinfo=UTC)],
+    )
+    connection.close()
+
+    store = DuckDBStore(database_path)
+    try:
+        assert store.get_session("legacy-session")["answered_questions_count"] == 0
+    finally:
+        store.close()
+
+
+def test_research_finding_round_trips_with_stable_metadata(tmp_path) -> None:
+    store = DuckDBStore(tmp_path / "sessions.db")
+    session = store.create_session("API")
+    finding = ResearchFinding(
+        source_id="source-1",
+        title="OAuth 2.1",
+        url="https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1",
+        excerpt="Especificação atual.",
+        query="OAuth 2.1",
+        published_at=datetime(2026, 8, 1, tzinfo=UTC),
+        source_kind=SourceKind.OFFICIAL,
+        relevance_score=0.9,
+        decision_context="autenticação",
+    )
+
+    store.save_research_findings(session.id, [finding])
+
+    restored = store.get_research_findings(session.id)[0]
+    assert restored["source_id"] == "source-1"
+    assert restored["published_at"].date() == date(2026, 8, 1)
+    assert restored["source_kind"] == "official"
 
 
 def test_resume_uses_structured_summary_and_only_the_requested_recent_messages(tmp_path) -> None:
