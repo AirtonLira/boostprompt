@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, TypedDict
 
@@ -9,8 +10,15 @@ from langgraph.graph import END, START, StateGraph
 
 from boostprompt.agents.discovery import DiscoveryAgent, format_question
 from boostprompt.agents.question_guide import QuestionGuideAgent
-from boostprompt.models.schemas import DiscoveryMode, ResearchFinding, TurnResult
-from boostprompt.research.duckduckgo_mcp import ResearchUnavailableError
+from boostprompt.agents.research_planner import ResearchPlannerAgent
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    ResearchFinding,
+    ResearchPlan,
+    ResearchRequest,
+    TurnResult,
+)
+from boostprompt.research import EvidencePolicy, ResearchUnavailableError
 
 
 class FinalAgent(Protocol):
@@ -18,7 +26,7 @@ class FinalAgent(Protocol):
 
 
 class ResearchProvider(Protocol):
-    async def search(self, query: str, decision_context: str = "") -> list[ResearchFinding]: ...
+    async def search(self, request: ResearchRequest) -> list[ResearchFinding]: ...
 
 
 class TurnState(TypedDict, total=False):
@@ -28,7 +36,7 @@ class TurnState(TypedDict, total=False):
     decisions: list[dict[str, Any]]
     questions_count: int
     last_user_message: str
-    research_query: str
+    research_plan: ResearchPlan
     research_context: str
     research_findings: list[ResearchFinding]
     research_references: list[ResearchFinding]
@@ -51,6 +59,7 @@ class WorkflowAgents:
     delivery: FinalAgent
     synthesis: FinalAgent
     question_guide: QuestionGuideAgent | None = None
+    research_planner: ResearchPlannerAgent | None = None
 
 
 class TurnWorkflow:
@@ -67,6 +76,7 @@ class TurnWorkflow:
 
     def _build_graph(self) -> Any:
         graph = StateGraph(TurnState)
+        graph.add_node("research_plan", self._research_plan)
         graph.add_node("research", self._research)
         graph.add_node("discovery", self._discovery)
         graph.add_node("question_guide", self._question_guide)
@@ -76,7 +86,8 @@ class TurnWorkflow:
         graph.add_node("synthesis", self._synthesis)
         graph.add_node("complete", self._complete)
 
-        graph.add_edge(START, "research")
+        graph.add_edge(START, "research_plan")
+        graph.add_edge("research_plan", "research")
         graph.add_conditional_edges(
             "research",
             self._route_after_research,
@@ -118,10 +129,20 @@ class TurnWorkflow:
             research_degraded=bool(final_state.get("research_degraded", False)),
         )
 
+    async def _research_plan(self, state: TurnState) -> dict[str, Any]:
+        if self.agents.research_planner is None:
+            return {"research_plan": state.get("research_plan", ResearchPlan())}
+        plan = await self.agents.research_planner.plan(
+            context=state.get("context", {}),
+            messages=state.get("messages", []),
+            questions_count=int(state.get("questions_count", 0)),
+        )
+        return {"research_plan": plan}
+
     async def _research(self, state: TurnState) -> dict[str, Any]:
-        query = state.get("research_query", "").strip()
-        existing_references = state.get("research_references", [])
-        if not query:
+        existing_references = self._normalize_findings(state.get("research_references", []))
+        plan = self._normalize_plan(state.get("research_plan", ResearchPlan()))
+        if not plan.requests:
             return {
                 "research_context": self._render_references(existing_references),
                 "research_findings": [],
@@ -130,33 +151,64 @@ class TurnWorkflow:
             }
         if self.research_provider is None:
             return {
-                "research_context": "Pesquisa não configurada; recomendações em modo degradado.",
+                "research_context": self._render_references(
+                    existing_references,
+                    "Pesquisa externa não configurada; recomendações em modo degradado.",
+                ),
                 "research_findings": [],
                 "research_references": existing_references,
                 "research_degraded": True,
             }
-        try:
-            findings = await self.research_provider.search(query, decision_context="discovery")
-        except ResearchUnavailableError:
-            return {
-                "research_context": "Pesquisa DuckDuckGo indisponível; recomendações em modo degradado.",
-                "research_findings": [],
-                "research_references": existing_references,
-                "research_degraded": True,
-            }
-        existing_urls = {item.url for item in existing_references}
-        fresh_findings = [item for item in findings if item.url not in existing_urls]
-        references = [*existing_references, *fresh_findings]
+        fetched_findings: list[ResearchFinding] = []
+        research_degraded = False
+        for request in plan.requests:
+            try:
+                fetched_findings.extend(await self.research_provider.search(request))
+            except ResearchUnavailableError:
+                research_degraded = True
+
+        references = EvidencePolicy().select([*existing_references, *fetched_findings])
+        existing_source_ids = {item.source_id for item in existing_references}
+        fresh_findings = [item for item in references if item.source_id not in existing_source_ids]
         return {
-            "research_context": self._render_references(references),
+            "research_context": self._render_references(
+                references,
+                "Pesquisa Exa indisponível; recomendações em modo degradado."
+                if research_degraded
+                else "",
+            ),
             "research_findings": fresh_findings,
             "research_references": references,
-            "research_degraded": False,
+            "research_degraded": research_degraded,
         }
 
     @staticmethod
-    def _render_references(references: list[ResearchFinding]) -> str:
-        return "\n".join(f"- {item.title}: {item.url}" for item in references)
+    def _normalize_plan(raw_plan: ResearchPlan | dict[str, Any]) -> ResearchPlan:
+        return raw_plan if isinstance(raw_plan, ResearchPlan) else ResearchPlan.model_validate(raw_plan)
+
+    @staticmethod
+    def _normalize_findings(
+        raw_findings: Sequence[ResearchFinding | dict[str, Any]],
+    ) -> list[ResearchFinding]:
+        return [
+            finding
+            if isinstance(finding, ResearchFinding)
+            else ResearchFinding.model_validate(finding)
+            for finding in raw_findings
+        ]
+
+    @staticmethod
+    def _render_references(references: list[ResearchFinding], warning: str = "") -> str:
+        rendered = [warning] if warning else []
+        for item in references:
+            date = item.published_at.date().isoformat() if item.published_at else "data não informada"
+            rendered.append(
+                f"- [{item.source_id}] {item.title} ({date})\n"
+                f"  {item.excerpt}\n"
+                f"  URL: {item.url}\n"
+                f"  Fundamenta: {item.decision_context or 'discovery'}"
+            )
+        return "\n".join(rendered)
 
     @staticmethod
     def _route_after_research(state: TurnState) -> str:

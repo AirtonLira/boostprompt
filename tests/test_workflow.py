@@ -2,8 +2,15 @@ import pytest
 
 from boostprompt.agents.discovery import DiscoveryResponse
 from boostprompt.graph.workflow import TurnWorkflow, WorkflowAgents
-from boostprompt.models.schemas import DiscoveryMode, Message, Question, ResearchFinding
-from boostprompt.research.duckduckgo_mcp import ResearchUnavailableError
+from boostprompt.models.schemas import (
+    DiscoveryMode,
+    Message,
+    Question,
+    ResearchFinding,
+    ResearchPlan,
+    ResearchRequest,
+)
+from boostprompt.research import ResearchUnavailableError
 
 
 def question() -> Question:
@@ -48,8 +55,8 @@ class FakeResearchProvider:
         self.findings = findings or []
         self.unavailable = unavailable
 
-    async def search(self, _query: str, decision_context: str = "") -> list[ResearchFinding]:
-        assert decision_context == "discovery"
+    async def search(self, request: ResearchRequest) -> list[ResearchFinding]:
+        assert request.decision_context == "discovery"
         if self.unavailable:
             raise ResearchUnavailableError("MCP indisponível")
         return self.findings
@@ -165,7 +172,7 @@ async def test_workflow_finalizes_without_discovery_when_forced() -> None:
 
 
 @pytest.mark.asyncio
-async def test_workflow_keeps_prior_references_and_adds_the_new_duckduckgo_result() -> None:
+async def test_workflow_keeps_prior_references_and_adds_the_new_exa_result() -> None:
     """Evita perder fontes de pesquisas anteriores antes de gerar o escopo final."""
 
     existing = ResearchFinding(
@@ -190,7 +197,9 @@ async def test_workflow_keeps_prior_references_and_adds_the_new_duckduckgo_resul
     )
     state = turn_state(questions_count=50)
     state.update(
-        research_query="LangGraph e DuckDB",
+        research_plan=ResearchPlan(
+            requests=[ResearchRequest(query="LangGraph e DuckDB")]
+        ),
         research_references=[existing],
     )
 
@@ -248,7 +257,7 @@ async def test_workflow_uses_degraded_research_without_blocking_the_next_questio
         synthesis=FakeFinalAgent("# Escopo"),
     )
     state = turn_state(questions_count=10)
-    state["research_query"] = "LangGraph"
+    state["research_plan"] = ResearchPlan(requests=[ResearchRequest(query="LangGraph")])
 
     result = await TurnWorkflow(
         agents,

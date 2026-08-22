@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Protocol
@@ -13,6 +12,7 @@ from boostprompt.agents.architecture import create_architecture_agent
 from boostprompt.agents.delivery import create_delivery_agent
 from boostprompt.agents.discovery import create_discovery_agent
 from boostprompt.agents.question_guide import QuestionGuideAgent
+from boostprompt.agents.research_planner import ResearchPlannerAgent
 from boostprompt.agents.security import create_security_agent
 from boostprompt.agents.summary import SummaryAgent
 from boostprompt.agents.synthesis import create_synthesis_agent
@@ -28,7 +28,7 @@ from boostprompt.models.schemas import (
     SessionSummary,
     TurnResult,
 )
-from boostprompt.research.duckduckgo_mcp import DuckDuckGoMCPResearchProvider
+from boostprompt.research import ExaResearchProvider
 from boostprompt.services.prompt_quality import PromptQualityEvaluator
 
 MINIMUM_PARTIAL_PROMPT_QUESTIONS = 10
@@ -50,21 +50,6 @@ class SessionSummarizer(Protocol):
 
 class DiscoveryWorkflowService:
     """Centraliza durabilidade e evita que a TUI monte estado de agentes."""
-
-    technical_terms = (
-        "api",
-        "arquitetura",
-        "banco",
-        "cloud",
-        "compliance",
-        "deploy",
-        "framework",
-        "ia",
-        "integração",
-        "langgraph",
-        "modelo",
-        "segurança",
-    )
 
     def __init__(
         self,
@@ -117,10 +102,11 @@ class DiscoveryWorkflowService:
             delivery=create_delivery_agent(resolved_model),
             synthesis=create_synthesis_agent(resolved_model),
             question_guide=QuestionGuideAgent(resolved_model),
+            research_planner=ResearchPlannerAgent(resolved_model),
         )
         workflow = TurnWorkflow(
             agents,
-            research_provider=DuckDuckGoMCPResearchProvider(),
+            research_provider=ExaResearchProvider(),
         )
         return cls.with_database(
             db_path=db_path or settings.database_path,
@@ -163,11 +149,8 @@ class DiscoveryWorkflowService:
             quality_evaluation=evaluation,
         )
         if result.research_findings:
-            self.repository.save_research_findings(
-                session_id,
-                state.get("research_query", ""),
-                result.research_findings,
-            )
+            for finding in result.research_findings:
+                self.repository.save_research_findings(session_id, finding.query, [finding])
         await self._summarize_if_needed(session_id, result.context)
         return result
 
@@ -262,14 +245,9 @@ class DiscoveryWorkflowService:
             "questions_count": resumed.session.questions_count,
             "decisions": resumed.decisions,
             "last_user_message": answer or "",
-            "research_query": self._research_query(answer) if answer is not None else "",
             "research_references": research_references,
             "force_finalize": force_finalize,
         }
-
-    def _research_query(self, answer: str) -> str:
-        terms_in_answer = set(re.findall(r"[\wÀ-ÿ]+", answer.casefold()))
-        return answer if any(term in terms_in_answer for term in self.technical_terms) else ""
 
     def _evaluate_quality(
         self,
