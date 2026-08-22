@@ -11,9 +11,7 @@ from pydantic_ai.mcp import MCPError, MCPToolset, StdioTransport  # type: ignore
 
 from boostprompt.models.schemas import ResearchFinding
 
-
-class ResearchUnavailableError(RuntimeError):
-    """Indica indisponibilidade do servidor MCP, sem invalidar a sessão local."""
+from .errors import ResearchUnavailableError
 
 
 class MCPResearchClient(Protocol):
