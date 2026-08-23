@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BoostPrompt">
+  <defs>
+    <linearGradient id="a" x1="0" x2="1" y1="0" y2="1">
+      <stop stop-color="#45e3ee"/>
+      <stop offset=".55" stop-color="#168aff"/>
+      <stop offset="1" stop-color="#8451ff"/>
+    </linearGradient>
+  </defs>
+  <path fill="#071027" d="M11 8h30a12 12 0 0 1 12 12v22a12 12 0 0 1-12 12H27L14 62l3-8A12 12 0 0 1 5 42V20A12 12 0 0 1 17 8Z"/>
+  <path fill="none" stroke="url(#a)" stroke-linecap="round" stroke-linejoin="round" stroke-width="5" d="M14 10h28a10 10 0 0 1 10 10v20a10 10 0 0 1-10 10H27L16 59l3-9a10 10 0 0 1-9-10V20a10 10 0 0 1 4-8"/>
+  <path fill="#f7f9ff" d="m34 18-16 18h11l-2 12 17-20H33z"/>
+</svg>
