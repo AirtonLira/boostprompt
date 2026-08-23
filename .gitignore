@@ -37,6 +37,11 @@ graphify-out
 .worktrees/
 .superpowers/
 
+# Landing page build artifacts
+site/node_modules/
+site/.astro/
+site/dist/
+
 # Environment
 .env
 .env.local
