@@ -14,3 +14,9 @@ export const shouldUseInteractiveScene = ({
 
 export const shouldUseScrollSequence = ({ reducedMotion, wideViewport }: ScrollEnvironment) =>
   !reducedMotion && wideViewport;
+
+export const browserSceneEnvironment = (matches: (query: string) => boolean): SceneEnvironment => ({
+  reducedMotion: matches('(prefers-reduced-motion: reduce)'),
+  finePointer: matches('(pointer: fine)'),
+  wideViewport: matches('(min-width: 768px)'),
+});
