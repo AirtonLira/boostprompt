@@ -1,0 +1,34 @@
+---
+import { product } from '../data/product';
+---
+
+<section class="hero section-shell" id="inicio" aria-labelledby="hero-title">
+  <div class="hero__copy">
+    <p class="eyebrow"><span class="eyebrow__pulse" aria-hidden="true"></span>ONE PROMPT. ANY AI. LIMITLESS IMPACT.</p>
+    <h1 id="hero-title">Descubra antes.<br /><span>Construa certo.</span></h1>
+    <p class="hero__lede">
+      O BoostPrompt conduz a conversa que transforma uma demanda nebulosa em um prompt de
+      implementação completo, auditável e pronto para o seu agente de IA.
+    </p>
+    <div class="hero__actions">
+      <a class="button button--primary" href={product.repositoryUrl} target="_blank" rel="noreferrer">
+        Abrir o repositório <span aria-hidden="true">↗</span>
+      </a>
+      <a class="button button--quiet" href="#como-funciona">Explorar o fluxo <span aria-hidden="true">↓</span></a>
+    </div>
+    <p class="scroll-cue"><span aria-hidden="true"></span>Desça para acompanhar a transformação.</p>
+  </div>
+
+  <div class="hero__scene" data-scene-fallback aria-hidden="true">
+    <div class="scene-orbit scene-orbit--wide"></div>
+    <div class="scene-orbit scene-orbit--short"></div>
+    <div class="scene-card">
+      <span class="scene-card__label">DISCOVERY / 12 DE 40</span>
+      <strong>O que precisa ser verdade no primeiro dia?</strong>
+      <span class="scene-card__answer">Uma jornada clara, decisões registradas e critérios de aceite.</span>
+      <span class="scene-card__meter"><i></i></span>
+    </div>
+    <span class="scene-tag scene-tag--top">Contexto consolidado</span>
+    <span class="scene-tag scene-tag--bottom">Prontidão: 84%</span>
+  </div>
+</section>

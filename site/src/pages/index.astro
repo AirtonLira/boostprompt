@@ -1,0 +1,22 @@
+---
+import FeatureGrid from '../components/FeatureGrid.astro';
+import FinalCta from '../components/FinalCta.astro';
+import Header from '../components/Header.astro';
+import HeroSection from '../components/HeroSection.astro';
+import ScrollNarrative from '../components/ScrollNarrative.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout>
+  <div class="page-progress" aria-hidden="true"><span></span></div>
+  <Header />
+  <main>
+    <HeroSection />
+    <div class="capability-marquee" aria-hidden="true">
+      <div>DISCOVERY ADAPTATIVO <i>✦</i> PESQUISA AUDITÁVEL <i>✦</i> PROMPT VALIDADO <i>✦</i> MEMÓRIA E RETOMADA <i>✦</i></div>
+    </div>
+    <ScrollNarrative />
+    <FeatureGrid />
+    <FinalCta />
+  </main>
+</BaseLayout>

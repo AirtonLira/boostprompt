@@ -1,0 +1,31 @@
+---
+import { product } from '../data/product';
+---
+
+<section class="features section-shell" id="diferenciais" aria-labelledby="features-title">
+  <div class="features__heading">
+    <p class="eyebrow">O QUE MUDA NA PRÁTICA</p>
+    <h2 id="features-title">Clareza suficiente para transformar decisão em execução.</h2>
+  </div>
+  <div class="features__grid">
+    <article class="feature-card feature-card--range">
+      <span class="feature-stat">30–50</span>
+      <span class="feature-stat__label">perguntas adaptativas por entrevista</span>
+      <h3>Sem questionário genérico.</h3>
+      <p>
+        Uma pergunta por vez, decisões registradas e contexto compacto para que conversas longas
+        continuem úteis.
+      </p>
+      <pre aria-hidden="true"><code><b>boostprompt</b> › contexto consolidado
+✓ decisões: arquitetura, segurança, entrega
+✓ pendências: 2 tópicos restantes</code></pre>
+    </article>
+    {product.features.map((feature, index) => (
+      <article class:list={['feature-card', index === 0 && 'feature-card--highlight']}>
+        <span class="feature-index">0{index + 1}</span>
+        <h3>{feature.title}</h3>
+        <p>{feature.detail}</p>
+      </article>
+    ))}
+  </div>
+</section>

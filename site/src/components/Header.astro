@@ -1,0 +1,17 @@
+---
+import { product } from '../data/product';
+---
+
+<header class="site-header">
+  <a class="brand" href="#inicio" aria-label="BoostPrompt — início">
+    <span class="brand__mark" aria-hidden="true">ϟ</span>
+    <span>Boost<span>Prompt</span></span>
+  </a>
+  <nav aria-label="Navegação principal">
+    <a href="#como-funciona">Como funciona</a>
+    <a href="#diferenciais">Diferenciais</a>
+  </nav>
+  <a class="header-cta" href={product.repositoryUrl} target="_blank" rel="noreferrer">
+    Abrir no GitHub <span aria-hidden="true">↗</span>
+  </a>
+</header>
