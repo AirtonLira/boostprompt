@@ -35,6 +35,7 @@ env/
 .serena
 graphify-out
 .worktrees/
+.superpowers/
 
 # Environment
 .env
