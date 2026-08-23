@@ -12,6 +12,20 @@ O **BoostPrompt** conduz o levantamento de requisitos com perguntas adaptativas,
 alternativas, trade-offs e recomendações. Ao final, ele organiza as decisões em um
 prompt Markdown único, autocontido, com requisitos, decisões, critérios de aceite e plano de execução.
 
+## Landing page
+
+O projeto inclui uma landing page estática e imersiva em `site/`, com narrativa de
+scroll e uma cena 3D carregada apenas em dispositivos compatíveis. Para executá-la localmente:
+
+```bash
+cd site
+npm install
+npm run dev
+```
+
+Enquanto este repositório pertencer a `AirtonLira`, a publicação via GitHub Pages fica em
+`https://airtonlira.github.io/boostprompt`.
+
 Você pode usar o projeto de duas formas independentes:
 
 - **CLI/TUI local**: uma aplicação interativa com sessões persistidas localmente em DuckDB;
